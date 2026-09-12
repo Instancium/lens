@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="CHANGELOG.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/InstanciumLens.AI/InstanciumLens.AI.csproj" />
+    <Project Path="src/InstanciumLens.App/InstanciumLens.App.csproj" Id="61f47dcb-81a7-4d08-8744-aac22e1ea954">
+      <Deploy Solution="Debug|*" />
+    </Project>
+    <Project Path="src/InstanciumLens.Core/InstanciumLens.Core.csproj" />
+    <Project Path="src/InstanciumLens.Infrastructure/InstanciumLens.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/InstanciumLens.Infrastructure.Tests/InstanciumLens.Infrastructure.Tests.csproj" />
+  </Folder>
+</Solution>

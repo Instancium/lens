@@ -1,0 +1,213 @@
+﻿@page "/"
+
+<div class="index-container">
+    @if (string.IsNullOrEmpty(selectedFolderPath))
+    {
+        <!-- STEP 1: No folder selected -->
+        <div class="welcome-state">
+            <div class="welcome-state__icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+            </div>
+            <h1 class="welcome-state__title">Welcome to Instancium Lens</h1>
+            <p class="welcome-state__text">Select a local folder to begin a 100% offline audit.</p>
+            <button class="btn btn--primary btn--large" @onclick="SelectFolder" disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <div class="spinner--small"></div>
+                    <text>Scanning Folder...</text>
+                }
+                else
+                {
+                    <svg class="btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                    <text>Browse Folder</text>
+                }
+            </button>
+        </div>
+    }
+    else if (isLoading)
+    {
+        <!-- STEP 2: Loading state -->
+        <div class="loading-state">
+            <div class="spinner--large"></div>
+            <p class="loading-state__text">Loading knowledge graphs from manifest...</p>
+        </div>
+    }
+    else
+    {
+        <!-- STEP 3: Folder loaded - show graphs -->
+        <div class="folder-loaded-state">
+            <div class="folder-header">
+                <div class="folder-header__info">
+                    <svg class="folder-header__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                    <div>
+                        <h2 class="folder-header__name">@GetFolderName(selectedFolderPath)</h2>
+                        <p class="folder-header__path">@selectedFolderPath</p>
+                    </div>
+                </div>
+                <button class="btn btn--ghost" @onclick="ChangeFolder">
+                    <svg class="btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                    Change Folder
+                </button>
+            </div>
+
+            @if (graphs.Count == 0)
+            {
+                <!-- No graphs yet -->
+                <div class="empty-graphs-state">
+                    <div class="empty-graphs-state__icon"></div>
+                    <h3 class="empty-graphs-state__title">No Knowledge Graphs Yet</h3>
+                    <p class="empty-graphs-state__text">
+                        This folder doesn't have any analysis profiles yet.<br />
+                        Click the button below to create your first graph using Smart Interview mode.
+                    </p>
+                    <button class="btn btn--primary" @onclick="CreateNewGraph">
+                        <svg class="btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        Create New Graph
+                    </button>
+                </div>
+            }
+            else
+            {
+                <!-- Graphs exist -->
+                <div class="graphs-section">
+                    <div class="graphs-section__header">
+                        <h3 class="graphs-section__title">Knowledge Graphs</h3>
+                        <span class="graphs-section__count">@graphs.Count @(graphs.Count == 1 ? "graph" : "graphs")</span>
+                    </div>
+
+                    <div class="graphs-list">
+                        @foreach (var graph in graphs)
+                        {
+                            <div class="graph-card @(activeGraphId == graph.Id ? "graph-card--active" : "")"
+                                 @onclick="() => SelectGraph(graph.Id)">
+                                <div class="graph-card__icon">@graph.Icon</div>
+                                <div class="graph-card__content">
+                                    <h4 class="graph-card__title">@graph.DisplayName</h4>
+                                    <p class="graph-card__description">@graph.Description</p>
+                                    <div class="graph-card__meta">
+                                        <span class="graph-card__date">@graph.CreatedAt.ToString("MMM dd, yyyy")</span>
+                                        <span class="graph-card__docs">@graph.DocumentCount documents</span>
+                                    </div>
+                                </div>
+                                <div class="graph-card__arrow">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="9 18 15 12 9 6"></polyline>
+                                    </svg>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <button class="btn btn--primary btn--full" @onclick="CreateNewGraph" style="margin-top: 24px;">
+                        <svg class="btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        Create New Graph
+                    </button>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private string? selectedFolderPath;
+    private string? activeGraphId;
+    private bool isLoading = false;
+    private List<GraphProfile> graphs = new();
+
+    private async Task SelectFolder()
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        // TODO: Implement real folder picker via MAUI FilePicker
+        await Task.Delay(500); // Simulate scanning
+
+        selectedFolderPath = "C:\\Users\\User\\Documents\\Legal_Documents";
+        await LoadGraphsFromManifest();
+
+        isLoading = false;
+    }
+
+    private async Task LoadGraphsFromManifest()
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        // TODO: Read manifest.json from .instancium folder
+        await Task.Delay(300); // Simulate loading
+
+        // Mock data - in real app read from manifest.json
+        graphs = new List<GraphProfile>
+        {
+            new GraphProfile
+            {
+                Id = "legal_audit",
+                DisplayName = "Contract Audit",
+                Description = "Finding violations and material responsibility",
+                Icon = "⚖️",
+                CreatedAt = DateTime.Now.AddDays(-5),
+                DocumentCount = 23
+            },
+            new GraphProfile
+            {
+                Id = "engineering_kip",
+                DisplayName = "KIP Specifications",
+                Description = "Pressure sensors and GOST compliance",
+                Icon = "⚙️",
+                CreatedAt = DateTime.Now.AddDays(-2),
+                DocumentCount = 15
+            }
+        };
+
+        isLoading = false;
+    }
+
+    private void ChangeFolder()
+    {
+        selectedFolderPath = null;
+        activeGraphId = null;
+        graphs.Clear();
+    }
+
+    private void SelectGraph(string graphId)
+    {
+        activeGraphId = graphId;
+        // TODO: Load graph and navigate to chat view
+        // NavigationManager.NavigateTo($"/chat/{graphId}");
+    }
+
+    private void CreateNewGraph()
+    {
+        // TODO: Start Smart Interview mode
+        // NavigationManager.NavigateTo("/smart-interview");
+    }
+
+    private string GetFolderName(string path)
+    {
+        return System.IO.Path.GetFileName(path) ?? path;
+    }
+
+    private class GraphProfile
+    {
+        public string Id { get; set; } = "";
+        public string DisplayName { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string Icon { get; set; } = "📊";
+        public DateTime CreatedAt { get; set; }
+        public int DocumentCount { get; set; }
+    }
+}

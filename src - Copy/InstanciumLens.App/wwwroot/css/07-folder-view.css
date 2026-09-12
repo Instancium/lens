@@ -1,0 +1,85 @@
+﻿/*07-folder-view.css Folder loaded state*/
+.folder-loaded-state {
+    width: 100%;
+    max-width: 800px;
+    margin: 0 auto;
+    animation: fadeIn 0.5s ease;
+}
+
+.folder-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-lg) var(--spacing-xl);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--spacing-xl);
+}
+
+.folder-header__info {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.folder-header__icon {
+    width: 40px;
+    height: 40px;
+    color: var(--color-primary);
+    flex-shrink: 0;
+}
+
+.folder-header__name {
+    font-size: var(--font-size-xl);
+    font-weight: 700;
+    margin: 0 0 var(--spacing-xs);
+    color: var(--color-text);
+}
+
+.folder-header__path {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+    margin: 0;
+    font-family: var(--font-mono);
+}
+
+/* Empty State */
+.empty-graphs-state {
+    text-align: center;
+    padding: var(--spacing-3xl) var(--spacing-xl);
+    background: var(--color-surface);
+    border: 2px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+}
+
+.empty-graphs-state__icon {
+    font-size: 64px;
+    margin-bottom: var(--spacing-md);
+    opacity: 0.5;
+}
+
+.empty-graphs-state__title {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    margin: 0 0 var(--spacing-sm);
+    color: var(--color-text);
+}
+
+.empty-graphs-state__text {
+    font-size: var(--font-size-base);
+    color: var(--color-text-muted);
+    margin: 0 0 var(--spacing-lg);
+    line-height: 1.6;
+}
+
+/* Loading State */
+.loading-state {
+    text-align: center;
+    animation: fadeIn 0.3s ease;
+}
+
+.loading-state__text {
+    font-size: var(--font-size-base);
+    color: var(--color-text-muted);
+}

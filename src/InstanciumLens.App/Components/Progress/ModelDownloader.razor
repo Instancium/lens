@@ -1,0 +1,156 @@
+﻿@inherits LayoutComponentBase
+
+<div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar @(isSidebarCollapsed ? "sidebar--collapsed" : "")">
+        <div class="sidebar__header">
+            <div class="sidebar__logo">
+                <svg class="sidebar__logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+                </svg>
+                @if (!isSidebarCollapsed)
+                {
+                    <span class="sidebar__title">Instancium Lens</span>
+                }
+            </div>
+            <button class="sidebar__toggle" @onclick="ToggleSidebar" aria-label="Toggle sidebar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    @if (isSidebarCollapsed)
+                    {
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                    }
+                    else
+                    {
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    }
+                </svg>
+            </button>
+        </div>
+
+        @if (!isSidebarCollapsed)
+        {
+            <div class="sidebar__content">
+                <div class="sidebar__section">
+                    <h3 class="sidebar__section-title">Knowledge Graphs</h3>
+                    <div class="profile-list">
+                        @foreach (var profile in profiles)
+                        {
+                            <div class="profile-card @(activeProfileId == profile.Id ? "profile-card--active" : "")"
+                                 @onclick="() => SelectProfile(profile.Id)">
+                                <div class="profile-card__icon">@profile.Icon</div>
+                                <div class="profile-card__body">
+                                    <h4 class="profile-card__title">@profile.DisplayName</h4>
+                                    <p class="profile-card__desc">@profile.Description</p>
+                                    <div class="profile-card__meta">
+                                        <span>@profile.CreatedAt.ToString("MMM dd, yyyy")</span>
+                                        <span>@profile.DocumentCount docs</span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="main__header">
+            <h1 class="main__title">@(activeProfile?.DisplayName ?? "Select a Knowledge Graph")</h1>
+        </div>
+        
+        <div class="main__content">
+            @Body
+        </div>
+    </main>
+
+    <!-- Status Bar -->
+    @if (showStatusBar)
+    {
+        <footer class="status-bar">
+            <div class="status-bar__inner">
+                <div class="status-step @(currentPass >= 1 ? "status-step--active" : "")">
+                    <div class="status-step__icon">
+                        @if (currentPass > 1) { <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" fill="none" stroke="currentColor" stroke-width="2"/></svg> }
+                        else if (currentPass == 1) { <div class="spinner"></div> }
+                        else { <span>1</span> }
+                    </div>
+                    <div class="status-step__info">
+                        <span class="status-step__label">Pass 1</span>
+                        <span class="status-step__text">Text Extraction</span>
+                    </div>
+                </div>
+                <div class="status-bar__divider"></div>
+                <div class="status-step @(currentPass >= 2 ? "status-step--active" : "")">
+                    <div class="status-step__icon">
+                        @if (currentPass > 2) { <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" fill="none" stroke="currentColor" stroke-width="2"/></svg> }
+                        else if (currentPass == 2) { <div class="spinner"></div> }
+                        else { <span>2</span> }
+                    </div>
+                    <div class="status-step__info">
+                        <span class="status-step__label">Pass 2</span>
+                        <span class="status-step__text">LLM Analysis</span>
+                    </div>
+                </div>
+                <div class="status-bar__divider"></div>
+                <div class="status-step @(currentPass >= 3 ? "status-step--active" : "")">
+                    <div class="status-step__icon">
+                        @if (currentPass == 3) { <div class="spinner"></div> }
+                        else { <span>3</span> }
+                    </div>
+                    <div class="status-step__info">
+                        <span class="status-step__label">Pass 3</span>
+                        <span class="status-step__text">Building Graph</span>
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(processingMessage))
+                {
+                    <div class="status-bar__message">@processingMessage</div>
+                }
+            </div>
+        </footer>
+    }
+</div>
+
+@code {
+    private bool isSidebarCollapsed = false;
+    private bool showStatusBar = false;
+    private int currentPass = 0;
+    private string? processingMessage;
+    private string? activeProfileId;
+    private Profile? activeProfile;
+
+    private List<Profile> profiles = new()
+    {
+        new Profile { Id = "legal", DisplayName = "Contract Audit", Description = "Finding violations and material responsibility", Icon = "️", CreatedAt = DateTime.Now.AddDays(-5), DocumentCount = 23 },
+        new Profile { Id = "engineering", DisplayName = "KIP Specifications", Description = "Pressure sensors and GOST compliance", Icon = "⚙️", CreatedAt = DateTime.Now.AddDays(-2), DocumentCount = 15 }
+    };
+
+    private void ToggleSidebar() => isSidebarCollapsed = !isSidebarCollapsed;
+
+    private void SelectProfile(string id)
+    {
+        activeProfileId = id;
+        activeProfile = profiles.FirstOrDefault(p => p.Id == id);
+    }
+
+    public void UpdateStatus(int pass, string? message = null)
+    {
+        currentPass = pass;
+        processingMessage = message;
+        showStatusBar = pass > 0;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public class Profile
+    {
+        public string Id { get; set; } = "";
+        public string DisplayName { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string Icon { get; set; } = "";
+        public DateTime CreatedAt { get; set; }
+        public int DocumentCount { get; set; }
+    }
+}

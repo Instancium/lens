@@ -1,0 +1,123 @@
+﻿@inherits LayoutComponentBase
+
+<div class="app-container">
+    <Sidebar IsCollapsed="isSidebarCollapsed"
+             IsCollapsedChanged="OnSidebarCollapsedChanged" />
+
+    <main class="main">
+        <div class="main__header">
+            <button class="sidebar__toggle-mobile" @onclick="ToggleSidebar" aria-label="Menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+            </button>
+            <h1 class="main__title">Instancium Lens</h1>
+        </div>
+
+        <div class="main__content">
+            @Body
+        </div>
+    </main>
+
+    @if (showStatusBar)
+    {
+        <footer class="status-bar">
+            <div class="status-bar__inner">
+                <div class="status-step @(currentPass >= 1 ? "status-step--active" : "")">
+                    <div class="status-step__icon">
+                        @if (currentPass > 1)
+                        {
+                            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" fill="none" stroke="currentColor" stroke-width="2" /></svg>
+                        }
+                        else if (currentPass == 1)
+                        {
+
+                            <div class="spinner"></div>
+                        }
+                        else
+                        {
+
+                            <span>1</span>
+                        }
+                    </div>
+                    <div class="status-step__info">
+                        <span class="status-step__label">Pass 1</span>
+                        <span class="status-step__text">Text Extraction</span>
+                    </div>
+                </div>
+                <div class="status-bar__divider"></div>
+                <div class="status-step @(currentPass >= 2 ? "status-step--active" : "")">
+                    <div class="status-step__icon">
+                        @if (currentPass > 2)
+                        {
+                            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" fill="none" stroke="currentColor" stroke-width="2" /></svg>
+                        }
+                        else if (currentPass == 2)
+                        {
+
+                            <div class="spinner"></div>
+                        }
+                        else
+                        {
+
+                            <span>2</span>
+                        }
+                    </div>
+                    <div class="status-step__info">
+                        <span class="status-step__label">Pass 2</span>
+                        <span class="status-step__text">LLM Analysis</span>
+                    </div>
+                </div>
+                <div class="status-bar__divider"></div>
+                <div class="status-step @(currentPass >= 3 ? "status-step--active" : "")">
+                    <div class="status-step__icon">
+                        @if (currentPass == 3)
+                        {
+                            <div class="spinner"></div>
+                        }
+                        else
+                        {
+
+                            <span>3</span>
+                        }
+                    </div>
+                    <div class="status-step__info">
+                        <span class="status-step__label">Pass 3</span>
+                        <span class="status-step__text">Building Graph</span>
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(processingMessage))
+                {
+                    <div class="status-bar__message">@processingMessage</div>
+                }
+            </div>
+        </footer>
+    }
+</div>
+
+@code {
+    private bool isSidebarCollapsed = false;
+    private bool showStatusBar = false;
+    private int currentPass = 0;
+    private string? processingMessage;
+
+    private void OnSidebarCollapsedChanged(bool value)
+    {
+        isSidebarCollapsed = value;
+    }
+
+    private void ToggleSidebar()
+    {
+        isSidebarCollapsed = !isSidebarCollapsed;
+    }
+
+    public void UpdateStatus(int pass, string? message = null)
+    {
+        currentPass = pass;
+        processingMessage = message;
+        showStatusBar = pass > 0;
+        InvokeAsync(StateHasChanged);
+    }
+}

@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+	
+	<ItemGroup>
+		<!-- Copies strictly the required native inference and Vulkan/CPU backend libraries -->
+		<None Update="Native\x64\*.dll">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+	
+  <ItemGroup>
+    <ProjectReference Include="..\InstanciumLens.Core\InstanciumLens.Core.csproj" />
+  </ItemGroup>
+
+</Project>
