@@ -5,6 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Native\x64\libomp.dll" />
+  </ItemGroup>
 	
 	<ItemGroup>
 		<!-- Copies strictly the required native inference and Vulkan/CPU backend libraries -->
