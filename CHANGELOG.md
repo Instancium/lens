@@ -5,6 +5,72 @@ All notable changes to the "Instancium Lens" project will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+---
+
+## 📑 Project Index & Context State
+*Last Updated: 2026-09-11 (Post v0.4.0)*
+
+### 🏗 Current Architecture Status
+| Layer | Component | Status | Notes |
+| :--- | :--- | :--- | :--- |
+| **UI (MAUI/Blazor)** | `Index.razor` (Dashboard) | ✅ Done | Folder selection, stats, profile list |
+| | `SmartInterview.razor` | ✅ Done | AI-driven ontology generation (Pass 0) |
+| | `Chat.razor` (RAG Interface) | ❌ **MISSING** | Critical gap: No UI for querying the graph |
+| | `Engine.razor` (Processing) | ❌ **MISSING** | No dedicated view for Pass 1-3 monitoring |
+| **Core Logic** | `DocumentAnalyzer` | ✅ Done | Orchestrates 3-pass analysis |
+| | `IAppStateService` | ✅ Done | Persists last folder/state across restarts |
+| **Infrastructure** | `WindowsDocumentVision` | ✅ Done | Native OCR/PDF text extraction (Pass 1) |
+| | `SqLiteGraphRepository` | ✅ Done | Graph storage in `.instancium/` |
+| | `LocalFolderAnalyzer` | ✅ Done | Fast directory scanning & stats |
+| **AI / LLM** | `LlamaCppProvider` | ✅ Done | Local Qwen 8B inference, streaming |
+| | `LocalAiService` | ✅ Done | ChatML prompts, JSON extraction (Pass 2) |
+
+### 📂 File System Map (Source of Truth)
+```text
+src/
+├── InstanciumLens.App/           # MAUI Shell & Blazor Views
+│   ├── MainPage.xaml(.cs)        # Entry point (BlazorWebView host)
+│   ├── MauiProgram.cs            # DI Registration
+│   ├── Services/
+│   │   └── MauiAppStateService.cs
+│   ├── Models/                   # UI-specific DTOs (ProfileItem, ChatMessage)
+│   └── Resources/                # Static assets (Fonts, Images)
+│
+├── InstanciumLens.Core/          # (Implicit in docs) Domain & Contracts
+│   ├── Domain/                   # DocumentNode, GraphEntity, KnowledgeGraph
+│   ├── Contracts/                # IGraphRepository, IDocumentVision, IAppStateService
+│   └── States/                   # ProcessingState enum
+│
+├── InstanciumLens.Infrastructure/# Platform Implementations
+│   ├── Data/
+│   │   └── SqLiteGraphRepository.cs
+│   ├── Services/
+│   │   ├── LocalFolderAnalyzer.cs
+│   │   ├── LocalFolderManifestService.cs
+│   │   └── DocumentAnalyzer.cs   # The 3-Pass Orchestrator
+│   └── Vision/
+│       └── WindowsDocumentVision.cs
+│
+└── InstanciumLens.AI/            # (Implicit in docs) Local LLM Stack
+    ├── Abstractions/             # IInferenceProvider
+    ├── Native/                   # P/Invoke bindings (llama.cpp)
+    ├── Providers/                # LlamaCppProvider
+    └── Services/
+        └── LocalAiService.cs     # Prompt engineering & JSON parsing
+```
+
+### 🚧 Critical Missing Pieces (Blockers for v0.5.0)
+1.  **Chat Page (`/chat/{id}`)**: Users cannot interact with the generated knowledge graph. Need RAG retrieval logic + Chat UI.
+2.  **Engine Page (`/engine`)**: No visual feedback for long-running analysis tasks (Pass 1-3).
+3.  **CSS Gaps**: Missing styles for Chat bubbles, Engine progress bars, and RAG source citations.
+
+---
+
+## [Unreleased] - Target v0.5.0
+### Planned
+* Implement `Chat.razor` for RAG-based Q&A over the knowledge graph.
+* Create `Engine.razor` for real-time visualization of the 3-pass analysis pipeline.
+* Add CSS modules for chat interface (`12-chat.css`) and engine status (`13-engine.css`).
 
 ## [0.4.0] - 2026-09-11
 
