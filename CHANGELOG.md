@@ -8,7 +8,7 @@ and this project adheres to Semantic Versioning.
 ---
 
 ## 📑 Project Index & Context State
-*Last Updated: 2026-09-11 (Post v0.4.0)*
+*Last Updated: 2026-09-14 (Critical Architecture Refactor)*
 
 ### 🏗 Current Architecture Status
 | Layer | Component | Status | Notes |
@@ -36,7 +36,7 @@ src/
 │   ├── Models/                   # UI-specific DTOs (ProfileItem, ChatMessage)
 │   └── Resources/                # Static assets (Fonts, Images)
 │
-├── InstanciumLens.Core/          # (Implicit in docs) Domain & Contracts
+├── InstanciumLens.Core/          # Domain & Contracts
 │   ├── Domain/                   # DocumentNode, GraphEntity, KnowledgeGraph
 │   ├── Contracts/                # IGraphRepository, IDocumentVision, IAppStateService
 │   └── States/                   # ProcessingState enum
@@ -51,18 +51,40 @@ src/
 │   └── Vision/
 │       └── WindowsDocumentVision.cs
 │
-└── InstanciumLens.AI/            # (Implicit in docs) Local LLM Stack
+└── InstanciumLens.AI/            # Local LLM Stack (Self-Contained)
     ├── Abstractions/             # IInferenceProvider
-    ├── Native/                   # P/Invoke bindings (llama.cpp)
-    ├── Providers/                # LlamaCppProvider
-    └── Services/
-        └── LocalAiService.cs     # Prompt engineering & JSON parsing
+    ├── Configuration/            # ModelSettings.cs
+    ├── Downloader/               # ModelProvisioning.cs
+    ├── Models/                   # DownloadProgress.cs
+    ├── Native/                   # P/Invoke bindings (llama.cpp, ggml)
+    ├── Providers/                # LlamaCppProvider.cs
+    └── Services/                 # LocalAiService.cs
 ```
+
+### 🚨 CRITICAL ISSUE: Model Loading Hang (v0.5.0 Blocker)
+**Symptom:** Application hangs and crashes silently when loading the model into memory. No error messages.
+
+**Root Cause Analysis Plan:**
+1.  **Architecture Violation:** Model loading logic (`InitializeAsync`) is currently called from `LocalAiService.GenerateOntologyProfileAsync` inside `InstanciumLens.AI`, but the actual invocation chain starts from UI layers (`SmartInterview.razor` → `AiService` → `GenerateOntologyProfileAsync` → `_inferenceProvider.InitializeAsync`).
+2.  **Missing Native Libraries:** The `Native/x64/` folder is empty. `LlamaCppProvider` depends on `llama.dll` and `ggml.dll` being present at runtime. Without these, `LlamaBackendInit()` or `LlamaModelLoadFromFile()` may hang or crash silently.
+3.  **Blocking Call Risk:** `InitializeAsync` in `LlamaCppProvider` is synchronous wrapped in `Task.CompletedTask`. If model loading takes seconds/minutes, it blocks the thread.
+4.  **Memory Pressure:** Qwen3VL-8B-Instruct-Q4_K_M.gguf is ~5GB. Insufficient RAM or fragmented memory could cause silent failure.
+
+**Action Plan:**
+1.  **Consolidate Loading Logic:** Create a new `IModelLoader` interface in `InstanciumLens.AI.Abstractions` and implement `ModelLoader` class that handles:
+    *   Checking model file existence
+    *   Validating native library presence
+    *   Calling `IInferenceProvider.InitializeAsync` safely on a background thread
+    *   Reporting progress and errors
+2.  **Add Logging:** Inject `ILogger` into `LlamaCppProvider` and `LocalAiService` to log each step of initialization.
+3.  **Verify Native DLLs:** Ensure `llama.dll`, `ggml.dll`, and Vulkan backend DLLs are copied to output directory.
+4.  **Test Isolation:** Create a minimal console test app to verify `LlamaCppProvider.InitializeAsync` works independently of Blazor UI.
 
 ### 🚧 Critical Missing Pieces (Blockers for v0.5.0)
 1.  **Chat Page (`/chat/{id}`)**: Users cannot interact with the generated knowledge graph. Need RAG retrieval logic + Chat UI.
 2.  **Engine Page (`/engine`)**: No visual feedback for long-running analysis tasks (Pass 1-3).
 3.  **CSS Gaps**: Missing styles for Chat bubbles, Engine progress bars, and RAG source citations.
+4.  **Model Loading Stability**: Application crashes without error during model initialization.
 
 ---
 
