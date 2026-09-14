@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace InstanciumLens.App.Components.Models
+namespace InstanciumLens.App.Models
 {
     public class ChatMessage
     {

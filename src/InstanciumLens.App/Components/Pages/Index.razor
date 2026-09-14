@@ -1,155 +1,114 @@
 ﻿@page "/"
-@using InstanciumLens.Core.Interfaces
 @using InstanciumLens.Core.Models
+@using InstanciumLens.App.Components.Progress
 
-<div class="index-container">
-    @if (string.IsNullOrEmpty(selectedFolderPath))
-    {
-        <!-- STEP 1: No folder selected -->
-        <div class="welcome-state">
-            <div class="welcome-state__icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
-            </div>
-            <h1 class="welcome-state__title">Welcome to Instancium Lens</h1>
-            <p class="welcome-state__text">Select a local folder to begin a 100% offline audit.</p>
-            <button class="btn btn--primary btn--large" @onclick="SelectFolder" disabled="@isLoading">
-                @if (isLoading)
-                {
-                    <div class="spinner--small"></div>
-                    <text>Scanning Folder...</text>
-                }
-                else
-                {
-                    <svg class="btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                    </svg>
-                    <text>Browse Folder</text>
-                }
-            </button>
-        </div>
-    }
-    else if (isLoading)
-    {
-        <!-- STEP 2: Loading state -->
-        <div class="loading-state">
-            <div class="spinner--large"></div>
-            <p class="loading-state__text">Loading knowledge graphs from manifest...</p>
-        </div>
-    }
-    else
-    {
-        <!-- STEP 3: Folder loaded - show graphs -->
-        <div class="folder-loaded-state">
-            <div class="folder-header">
-                <div class="folder-header__info">
-                    <svg class="folder-header__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                    </svg>
-                    <div>
-                        <h2 class="folder-header__name">@GetFolderName(selectedFolderPath)</h2>
-                        <p class="folder-header__path">@selectedFolderPath</p>
-                        @if (folderStats != null)
-                        {
-                            <div class="folder-stats" style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">
-                                <span>📁 @folderStats.SubfolderCount subfolders</span> &bull;
-                                <span>📄 @folderStats.FileCount PDF files</span> &bull;
-                                <span>💾 @folderStats.FormattedSize</span>
-                            </div>
-                        }
-                    </div>
-                </div>
-                <button class="btn btn--ghost" @onclick="ChangeFolder">
-                    <svg class="btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                    </svg>
-                    Change Folder
-                </button>
-            </div>
+@inject InstanciumLens.Core.Interfaces.IFolderPickerService FolderPickerService
+@inject InstanciumLens.Core.Interfaces.IFolderAnalyzer FolderAnalyzer
+@inject InstanciumLens.Core.Interfaces.IAppStateService AppState
+@inject InstanciumLens.Core.Interfaces.IGraphRagManager GraphRagManager
+@inject NavigationManager NavManager
 
-            @if (graphs.Count == 0)
+<div class="dashboard-layout">
+    <header class="dashboard-header">
+        <div class="dashboard-header__title">
+            <h1>Workspace</h1>
+            @if (!string.IsNullOrEmpty(selectedFolderPath))
             {
-                <!-- No graphs yet -->
-                <div class="empty-graphs-state">
-                    <div class="empty-graphs-state__icon"></div>
-                    <h3 class="empty-graphs-state__title">No Knowledge Graphs Yet</h3>
-                    <p class="empty-graphs-state__text">
-                        This folder doesn't have any analysis profiles yet.<br />
-                        Click the button below to create your first graph using Smart Interview mode.
-                    </p>
-                    <button class="btn btn--primary" @onclick="CreateNewGraph">
-                        <svg class="btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="12" y1="5" x2="12" y2="19"></line>
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
-                        </svg>
-                        Create New Graph
-                    </button>
+                <p class="text-muted">@selectedFolderPath</p>
+            }
+        </div>
+        <div class="dashboard-header__actions">
+            <button class="btn btn--outline" @onclick="HandleFolderSelection" disabled="@isLoading">
+                @(string.IsNullOrEmpty(selectedFolderPath) ? "Browse Folder" : "Change Folder")
+            </button>
+            @if (!string.IsNullOrEmpty(selectedFolderPath))
+            {
+                <button class="btn btn--primary" @onclick="CreateNewGraph" disabled="@isLoading">
+                    + New Graph Profile
+                </button>
+            }
+        </div>
+    </header>
+
+    @if (isLoading)
+    {
+        <div class="loading-state">
+            <p>Scanning directory and reading configuration...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(selectedFolderPath))
+    {
+        <!-- Folder Statistics -->
+        @if (folderStats != null)
+        {
+            <div class="folder-stats-banner">
+                <span class="stat-item">📁 @folderStats.SubfolderCount subfolders</span>
+                <span class="stat-item">📄 @folderStats.FileCount PDF files</span>
+                <span class="stat-item">💾 @folderStats.FormattedSize</span>
+            </div>
+        }
+
+        <!-- Knowledge Graphs Grid -->
+        <div class="profiles-section">
+            @if (graphs.Any())
+            {
+                <div class="profiles-grid">
+                    @foreach (var profile in graphs)
+                    {
+                        <div class="profile-card">
+                            <div class="profile-card__header">
+                                <span class="profile-card__icon">@profile.Icon</span>
+                                <h3 class="profile-card__title">@profile.DisplayName</h3>
+                            </div>
+                            <p class="profile-card__desc">@profile.Description</p>
+
+                            <div class="profile-card__actions">
+                                <button class="btn btn--ghost btn--small" @onclick="() => StartAnalysis(profile)">
+                                    ▶ Build / Update Graph
+                                </button>
+                                <button class="btn btn--primary btn--small" @onclick="() => OpenChat(profile)">
+                                    💬 Open Chat
+                                </button>
+                            </div>
+                        </div>
+                    }
                 </div>
             }
             else
             {
-                <!-- Graphs exist -->
-                <div class="graphs-section">
-                    <div class="graphs-section__header">
-                        <h3 class="graphs-section__title">Knowledge Graphs</h3>
-                        <span class="graphs-section__count">@graphs.Count @(graphs.Count == 1 ? "graph" : "graphs")</span>
-                    </div>
-
-                    <div class="graphs-list">
-                        @foreach (var graph in graphs)
-                        {
-                            <div class="graph-card @(activeGraphId == graph.Id ? "graph-card--active" : "")"
-                                 @onclick="() => SelectGraph(graph.Id)">
-                                <div class="graph-card__icon">@graph.Icon</div>
-                                <div class="graph-card__content">
-                                    <h4 class="graph-card__title">@graph.DisplayName</h4>
-                                    <p class="graph-card__description">@graph.Description</p>
-                                    <div class="graph-card__meta">
-                                        <span class="graph-card__date">@graph.CreatedAt.ToString("MMM dd, yyyy")</span>
-                                        <span class="graph-card__docs">@graph.DocumentCount documents</span>
-                                    </div>
-                                </div>
-                                <div class="graph-card__arrow">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="9 18 15 12 9 6"></polyline>
-                                    </svg>
-                                </div>
-                            </div>
-                        }
-                    </div>
-
-                    <button class="btn btn--primary btn--full" @onclick="CreateNewGraph" style="margin-top: 24px;">
-                        <svg class="btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="12" y1="5" x2="12" y2="19"></line>
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
-                        </svg>
-                        Create New Graph
-                    </button>
+                <div class="empty-state">
+                    <div class="empty-state__icon">🗂️</div>
+                    <h3>No Knowledge Graphs Yet</h3>
+                    <p class="text-muted">Click "New Graph Profile" to start the Smart Interview.</p>
                 </div>
             }
         </div>
     }
+    else
+    {
+        <div class="welcome-state">
+            <h2>Welcome to Instancium Lens</h2>
+            <p>Select a folder containing your PDF documents to begin offline analysis.</p>
+        </div>
+    }
 </div>
 
+<!-- ========================================== -->
+<!-- 🚀 PROGRESS COMPONENT OVERLAY -->
+<!-- ========================================== -->
+<Progress State="@currentProcessingState" OnDismiss="ResetProgress" />
+
 @code {
-    [Inject] private IFolderPickerService FolderPickerService { get; set; } = default!;
-    [Inject] private IFolderAnalyzer FolderAnalyzer { get; set; } = default!;
-    [Inject] private NavigationManager NavManager { get; set; } = default!;
-    [Inject] private IAppStateService AppState { get; set; } = default!;
-
-    private FolderStatistics? folderStats;
     private string? selectedFolderPath;
-    private string? activeGraphId;
+    private FolderStatistics? folderStats;
     private bool isLoading = false;
-    private List<InstanciumLens.Core.Models.GraphProfile> graphs = new();
+    private List<GraphProfile> graphs = new();
 
-    private async Task SelectFolder() => await HandleFolderSelection();
-    private async Task ChangeFolder() => await HandleFolderSelection();
+    // State for the Progress overlay component
+    private ProcessingState currentProcessingState = new();
 
     protected override async Task OnInitializedAsync()
     {
-        // Auto-load last session
         if (!string.IsNullOrEmpty(AppState.CurrentFolderPath))
         {
             selectedFolderPath = AppState.CurrentFolderPath;
@@ -162,7 +121,6 @@
         }
     }
 
-
     private async Task HandleFolderSelection()
     {
         var pickedPath = await FolderPickerService.PickFolderAsync();
@@ -171,11 +129,9 @@
         {
             isLoading = true;
             selectedFolderPath = pickedPath;
-            activeGraphId = null;
             folderStats = null;
             graphs.Clear();
 
-            // Save to persistent storage
             AppState.SetCurrentFolder(pickedPath);
             await InvokeAsync(StateHasChanged);
 
@@ -187,43 +143,26 @@
         }
     }
 
-
     private async Task LoadGraphsFromManifest()
     {
         if (string.IsNullOrEmpty(selectedFolderPath)) return;
 
-        isLoading = true;
-        StateHasChanged();
-
         try
         {
             string manifestPath = System.IO.Path.Combine(selectedFolderPath, ".instancium", "manifest.json");
-
             if (System.IO.File.Exists(manifestPath))
             {
                 string json = await System.IO.File.ReadAllTextAsync(manifestPath);
-                var manifest = System.Text.Json.JsonSerializer.Deserialize<InstanciumLens.Core.Models.FolderManifest>(json);
+                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var manifest = System.Text.Json.JsonSerializer.Deserialize<FolderManifest>(json, options);
                 graphs = manifest?.Profiles ?? new();
-            }
-            else
-            {
-                // New folder, no profiles yet
-                graphs.Clear();
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to load manifest: {ex.Message}");
+            Console.WriteLine($"Error reading manifest: {ex.Message}");
             graphs.Clear();
         }
-
-        isLoading = false;
-    }
-
-    private void SelectGraph(string graphId)
-    {
-        activeGraphId = graphId;
-        // NavigationManager.NavigateTo($"/chat/{graphId}");
     }
 
     private void CreateNewGraph()
@@ -231,8 +170,48 @@
         NavManager.NavigateTo("/smart-interview");
     }
 
-    private string GetFolderName(string path)
+    private void OpenChat(GraphProfile profile)
     {
-        return System.IO.Path.GetFileName(path) ?? path;
+        // We will implement this route next
+        NavManager.NavigateTo($"/chat/{profile.Id}");
+    }
+
+    // ==========================================
+    // ANALYSIS ORCHESTRATION LOGIC
+    // ==========================================
+    private async Task StartAnalysis(GraphProfile profile)
+    {
+        if (string.IsNullOrEmpty(selectedFolderPath)) return;
+
+        // 1. Initialize state to trigger the overlay
+        currentProcessingState = new ProcessingState { CurrentPhase = ProcessingPhase.Pass1_TextExtraction };
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            // 2. Run the heavy analysis pipeline.
+            // The callback instantly pushes state updates to the Progress component.
+            await GraphRagManager.BuildGraphForFolderAsync(
+                selectedFolderPath,
+                profile,
+                state =>
+                {
+                    currentProcessingState = state;
+                    // Force Blazor UI thread to redraw the progress bar
+                    InvokeAsync(StateHasChanged);
+                });
+        }
+        catch (Exception ex)
+        {
+            currentProcessingState.CurrentPhase = ProcessingPhase.Error;
+            currentProcessingState.StatusMessage = $"Analysis failed: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void ResetProgress()
+    {
+        currentProcessingState = new ProcessingState(); // Reset to Idle
+        StateHasChanged();
     }
 }

@@ -1,0 +1,161 @@
+﻿/* ==========================================================================
+   Progress Overlay Component (Corporate Premium UX)
+   ========================================================================== */
+
+.progress-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(249, 250, 251, 0.7); /* Soft backdrop */
+    backdrop-filter: blur(8px); /* Windows 11 Mica effect */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.progress-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 32px;
+    width: 100%;
+    max-width: 500px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.progress-card__title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary, #111827);
+    text-align: center;
+    margin: 0;
+}
+
+/* Steps Visualization */
+.progress-steps {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+}
+
+.step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    opacity: 0.4;
+    transition: opacity 0.3s ease;
+}
+
+.step--active {
+    opacity: 1;
+}
+
+    .step--active .step__icon {
+        transform: scale(1.1);
+        box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+    }
+
+.step--completed {
+    opacity: 1;
+}
+
+.step__icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--bg-secondary, #F3F4F6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    transition: all 0.3s ease;
+}
+
+.step__label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary, #4B5563);
+}
+
+.step-divider {
+    flex-grow: 1;
+    height: 2px;
+    background-color: var(--bg-secondary, #E5E7EB);
+    margin: 0 16px 20px 16px;
+    position: relative;
+    overflow: hidden;
+}
+
+.step-divider--filled::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 100%;
+    background-color: var(--accent-color, #4F46E5);
+    animation: fillDivider 0.5s ease-out forwards;
+}
+
+/* Linear Bar */
+.progress-bar-container {
+    height: 6px;
+    background-color: var(--bg-secondary, #E5E7EB);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background-color: var(--accent-color, #4F46E5);
+    border-radius: 4px;
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Details */
+.progress-details {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.875rem;
+    color: var(--text-secondary, #4B5563);
+}
+
+.progress-count {
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+}
+
+.mt-3 {
+    margin-top: 16px;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        backdrop-filter: blur(0px);
+    }
+
+    to {
+        opacity: 1;
+        backdrop-filter: blur(8px);
+    }
+}
+
+@keyframes fillDivider {
+    from {
+        transform: translateX(-100%);
+    }
+
+    to {
+        transform: translateX(0);
+    }
+}

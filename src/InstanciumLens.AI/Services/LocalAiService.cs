@@ -14,11 +14,14 @@ namespace InstanciumLens.AI.Services
     public class LocalAiService : ILocalModelService
     {
         private readonly IInferenceProvider _inferenceProvider;
+        private bool _isModelLoaded = false;
+
 
         public LocalAiService(IInferenceProvider inferenceProvider)
         {
             _inferenceProvider = inferenceProvider ?? throw new ArgumentNullException(nameof(inferenceProvider));
         }
+
 
         public async Task<KnowledgeGraph> ExtractEntitiesAsync(
             DocumentNode document,
@@ -132,15 +135,35 @@ namespace InstanciumLens.AI.Services
             public string Icon { get; set; } = "📊";
             public JsonElement OntologySchema { get; set; }
         }
-
         public async Task<(GraphProfile Profile, string OntologySchemaJson)> GenerateOntologyProfileAsync(
-                    string userIntent,
-                    CancellationToken cancellationToken = default)
+    string userIntent,
+    CancellationToken cancellationToken = default)
         {
+            if (!_isModelLoaded)
+            {
+                string modelDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InstanciumLens", "Models");
+
+                if (!Directory.Exists(modelDir))
+                {
+                    throw new DirectoryNotFoundException($"Model directory not found: {modelDir}");
+                }
+
+                var ggufFiles = Directory.GetFiles(modelDir, "*.gguf");
+
+                if (ggufFiles.Length == 0)
+                {
+                    throw new FileNotFoundException($"No .gguf model found in {modelDir}. Please wait for the initial download to complete.");
+                }
+
+                string modelPath = ggufFiles[0];
+
+                await _inferenceProvider.InitializeAsync(modelPath, cancellationToken);
+                _isModelLoaded = true;
+            }
+
             string prompt = BuildOntologyPrompt(userIntent);
             var sb = new StringBuilder();
 
-            // Stream the response. In a real app, we could yield this to UI for a loading animation.
             await foreach (var token in _inferenceProvider.GenerateTextStreamAsync(prompt, cancellationToken))
             {
                 sb.Append(token);
@@ -155,7 +178,6 @@ namespace InstanciumLens.AI.Services
 
                 if (llmResponse != null)
                 {
-                    // Map the LLM output to our Domain Model
                     string safeId = string.IsNullOrWhiteSpace(llmResponse.ProfileName)
                         ? Guid.NewGuid().ToString().Substring(0, 8)
                         : llmResponse.ProfileName.ToLower().Replace(" ", "_");
@@ -177,8 +199,6 @@ namespace InstanciumLens.AI.Services
             }
             catch (JsonException)
             {
-                // In production: Log parsing errors. 
-                // Fallback to a generic profile if the LLM hallucinated bad JSON.
             }
 
             var fallbackProfile = new GraphProfile

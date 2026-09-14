@@ -1,0 +1,97 @@
+﻿@using InstanciumLens.Core.Models
+
+@if (State != null && State.CurrentPhase != ProcessingPhase.Idle)
+{
+    <div class="progress-overlay">
+        <div class="progress-card">
+            <h3 class="progress-card__title">Knowledge Graph Construction</h3>
+
+            <!-- Visual Step Indicators -->
+            <div class="progress-steps">
+                <div class="step @GetStepClass(ProcessingPhase.Pass1_TextExtraction)">
+                    <div class="step__icon">📄</div>
+                    <div class="step__label">Pass 1: Read</div>
+                </div>
+                <div class="step-divider @GetDividerClass(ProcessingPhase.Pass1_TextExtraction)"></div>
+
+                <div class="step @GetStepClass(ProcessingPhase.Pass2_EntityResolution)">
+                    <div class="step__icon">🧠</div>
+                    <div class="step__label">Pass 2: AI Resolve</div>
+                </div>
+                <div class="step-divider @GetDividerClass(ProcessingPhase.Pass2_EntityResolution)"></div>
+
+                <div class="step @GetStepClass(ProcessingPhase.Pass3_GraphBuilding)">
+                    <div class="step__icon">🔗</div>
+                    <div class="step__label">Pass 3: Link</div>
+                </div>
+            </div>
+
+            <!-- Animated Progress Bar -->
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" style="width: @(State.ProgressPercentage)%"></div>
+            </div>
+
+            <!-- Status Details -->
+            <div class="progress-details">
+                <span class="progress-message">@State.StatusMessage</span>
+                @if (State.TotalDocuments > 0)
+                {
+                    <span class="progress-count">@State.ProcessedDocuments / @State.TotalDocuments files</span>
+                }
+            </div>
+
+            <!-- Actions on Completion or Error -->
+            @if (State.CurrentPhase == ProcessingPhase.Error)
+            {
+                <button class="btn btn--ghost mt-3" @onclick="Dismiss">Close</button>
+            }
+            @if (State.CurrentPhase == ProcessingPhase.Completed)
+            {
+                <button class="btn btn--primary mt-3" @onclick="Dismiss">View Graph</button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// The current state of the document processing pipeline.
+    /// </summary>
+    [Parameter]
+    public ProcessingState? State { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the user dismisses the completion or error dialog.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnDismiss { get; set; }
+
+    private string GetStepClass(ProcessingPhase targetPhase)
+    {
+        if (State == null) return "step--pending";
+
+        // Completed phases (including the overarching Completed phase)
+        if (State.CurrentPhase > targetPhase || State.CurrentPhase == ProcessingPhase.Completed)
+            return "step--completed";
+
+        // Currently active phase
+        if (State.CurrentPhase == targetPhase)
+            return "step--active";
+
+        return "step--pending";
+    }
+
+    private string GetDividerClass(ProcessingPhase sourcePhase)
+    {
+        if (State == null) return "";
+        return (State.CurrentPhase > sourcePhase || State.CurrentPhase == ProcessingPhase.Completed) ? "step-divider--filled" : "";
+    }
+
+    private async Task Dismiss()
+    {
+        if (OnDismiss.HasDelegate)
+        {
+            await OnDismiss.InvokeAsync();
+        }
+    }
+}

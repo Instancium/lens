@@ -9,6 +9,7 @@
 	<ItemGroup>
 		<!-- Copies strictly the required native inference and Vulkan/CPU backend libraries -->
 		<None Update="Native\x64\*.dll">
+			<Link>%(Filename)%(Extension)</Link>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>

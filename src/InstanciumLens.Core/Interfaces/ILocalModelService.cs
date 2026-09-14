@@ -7,6 +7,7 @@ namespace InstanciumLens.Core.Interfaces
 {
     public interface ILocalModelService
     {
+  
         /// <summary>
         /// Smart Interview: Analyzes user intent and generates a custom GraphProfile and JSON Ontology schema.
         /// </summary>

@@ -4,6 +4,8 @@ using InstanciumLens.AI.Providers.LlamaCpp;
 using InstanciumLens.AI.Services;
 using InstanciumLens.App.Services;
 using InstanciumLens.Core.Interfaces;
+using InstanciumLens.Core.Models;
+using InstanciumLens.Core.Services;
 using InstanciumLens.Infrastructure.Data;
 using InstanciumLens.Infrastructure.Services;
 using InstanciumLens.Infrastructure.Vision;
@@ -68,6 +70,14 @@ namespace InstanciumLens.App
             builder.Services.AddSingleton<IFolderPickerService, WindowsFolderPickerService>();
             builder.Services.AddSingleton<IFolderAnalyzer, LocalFolderAnalyzer>();
             builder.Services.AddSingleton<IAppStateService, MauiAppStateService>();
+
+
+            // --- Core Services ---
+            builder.Services.AddTransient<IFolderManifestService, LocalFolderManifestService>();
+            builder.Services.AddTransient<IGraphRagManager, GraphRagManager>();
+            builder.Services.AddSingleton<IGraphRepositoryFactory, SqLiteGraphRepositoryFactory>();
+
+            // (Ensure your AiService and Vision services are also registered here from previous steps)
 
             return builder.Build();
         }

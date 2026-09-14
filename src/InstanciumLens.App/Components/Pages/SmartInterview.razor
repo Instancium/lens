@@ -1,10 +1,14 @@
 ﻿@page "/smart-interview"
-@inject NavigationManager NavigationManager
+@using InstanciumLens.App.Models
+@inject NavigationManager NavManager
+@inject InstanciumLens.Core.Interfaces.IAppStateService AppState
+@inject InstanciumLens.Core.Interfaces.ILocalModelService AiService
+@inject InstanciumLens.Core.Interfaces.IFolderManifestService ManifestService
 
 <div class="interview-layout">
     <!-- Top Bar: Context and Navigation -->
     <header class="interview-header">
-        <button class="btn btn--ghost" @onclick="CancelAndReturn">
+        <button class="btn btn--ghost" @onclick="CancelAndReturn" disabled="@isProcessing">
             <svg class="btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
@@ -20,7 +24,7 @@
     <main class="interview-canvas">
         <div class="chat-container">
 
-            <!-- AI Greeting Message -->
+            <!-- Default Greeting Message -->
             <div class="chat-message chat-message--system">
                 <div class="chat-message__avatar">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -40,7 +44,39 @@
                 </div>
             </div>
 
-            <!-- Future dynamic conversation and skeleton loaders will be rendered here -->
+            <!-- Dynamic Conversation History -->
+            @foreach (var msg in messages)
+            {
+                <div class="chat-message chat-message--@msg.Role">
+                    @if (msg.Role == "system")
+                    {
+                        <div class="chat-message__avatar">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" />
+                                <path d="M2 12h20M12 12v8" />
+                            </svg>
+                        </div>
+                    }
+                    <div class="chat-message__content">
+                        <p class="chat-message__text">@msg.Content</p>
+                    </div>
+                </div>
+            }
+
+            <!-- AI Thinking Skeleton Loader -->
+            @if (isProcessing)
+            {
+                <div class="chat-message chat-message--system chat-message--loading">
+                    <div class="chat-message__avatar">
+                        <svg class="spin-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+                        </svg>
+                    </div>
+                    <div class="chat-message__content">
+                        <p class="chat-message__text text-muted">Analyzing intent and crafting ontology schema...</p>
+                    </div>
+                </div>
+            }
 
         </div>
     </main>
@@ -51,10 +87,14 @@
             <textarea class="input-textarea"
                       placeholder="Describe your search intent in plain language..."
                       rows="3"
-                      @bind="userIntentInput" 
-                      @bind:event="oninput"></textarea>
+                      disabled="@isProcessing"
+                      @bind="userIntentInput"
+                      @bind:event="oninput"
+                      @onkeydown="HandleKeyDown"></textarea>
 
-            <button class="btn btn--primary btn--circle btn--send" disabled="@string.IsNullOrWhiteSpace(userIntentInput)">
+            <button class="btn btn--primary btn--circle btn--send"
+                    disabled="@(string.IsNullOrWhiteSpace(userIntentInput) || isProcessing)"
+                    @onclick="SendIntentAsync">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="22" y1="2" x2="11" y2="13"></line>
                     <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
@@ -65,28 +105,69 @@
 </div>
 
 @code {
-    [Inject] private InstanciumLens.Core.Interfaces.IAppStateService AppState { get; set; } = default!;
-    
     private string? FolderPath => AppState.CurrentFolderPath;
     private string userIntentInput = string.Empty;
+    private bool isProcessing = false;
+
+    // Using the ChatMessage model we created earlier
+    private List<ChatMessage> messages = new();
+
+    private async Task SendIntentAsync()
+    {
+        if (string.IsNullOrWhiteSpace(userIntentInput) || isProcessing || string.IsNullOrEmpty(FolderPath)) return;
+
+        // 1. Snapshot the input and update UI instantly
+        string intent = userIntentInput;
+        userIntentInput = string.Empty;
+        messages.Add(new ChatMessage { Role = "user", Content = intent });
+        isProcessing = true;
+
+        // Force Blazor to render the user's message and the loading spinner
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            // 2. Call the Local LLM to architect the ontology
+            var (profile, schemaJson) = await AiService.GenerateOntologyProfileAsync(intent);
+
+            // 3. Save the new profile to the hidden manifest directory
+            await ManifestService.SaveProfileAsync(FolderPath, profile, schemaJson);
+
+            // 4. Return to Index.razor where the new Profile Card will automatically appear
+            NavManager.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            messages.Add(new ChatMessage
+            {
+                Role = "system",
+                Content = $"Analysis failed: {ex.Message}. Please try rephrasing your intent."
+            });
+            isProcessing = false;
+        }
+    }
+
+    // Allows pressing Ctrl+Enter to send
+    private async Task HandleKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && e.CtrlKey)
+        {
+            await SendIntentAsync();
+        }
+    }
 
     private void CancelAndReturn()
     {
-        NavigationManager.NavigateTo("/");
+        NavManager.NavigateTo("/");
     }
 
     private string GetShortPath(string? path)
     {
         if (string.IsNullOrEmpty(path)) return "Unknown Folder";
-
-        // Truncate long paths for the UI header to maintain clean design
         if (path.Length > 50)
         {
             var parts = path.Split(System.IO.Path.DirectorySeparatorChar);
-            if (parts.Length > 2)
-            {
-                return $"{parts[0]}\\...\\{parts[^1]}";
-            }
+            if (parts.Length > 2) return $"{parts[0]}\\...\\{parts[^1]}";
         }
         return path;
     }

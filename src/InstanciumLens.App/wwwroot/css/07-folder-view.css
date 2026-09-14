@@ -83,3 +83,75 @@
     font-size: var(--font-size-base);
     color: var(--color-text-muted);
 }
+
+/* Dashboard Layout & Header */
+.dashboard-layout {
+    display: flex;
+    flex-direction: column;
+    padding: 32px 48px;
+    height: 100%;
+    background-color: var(--bg-primary, #F9FAFB);
+    overflow-y: auto;
+}
+
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+}
+
+.dashboard-header__title h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-primary, #111827);
+    margin: 0 0 8px 0;
+}
+
+/* Folder Stats Banner */
+.folder-stats-banner {
+    display: flex;
+    gap: 16px;
+    background-color: #FFFFFF;
+    padding: 12px 24px;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border: 1px solid #E5E7EB;
+    margin-bottom: 32px;
+}
+
+.stat-item {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-secondary, #4B5563);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Empty State */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 64px 24px;
+    background-color: #FFFFFF;
+    border: 2px dashed #D1D5DB;
+    border-radius: 16px;
+    margin-top: 16px;
+}
+
+.empty-state__icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    opacity: 0.8;
+}
+
+.empty-state h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary, #111827);
+    margin: 0 0 8px 0;
+}
