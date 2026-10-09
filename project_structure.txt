@@ -1,0 +1,154 @@
+﻿+--- src
+|    +--- InstanciumLens.AI
+|    |    +--- Abstractions
+|    |    |    \--- IInferenceProvider.cs
+|    |    +--- Configuration
+|    |    |    \--- ModelSettings.cs
+|    |    +--- Downloader
+|    |    |    \--- ModelProvisioning.cs
+|    |    +--- Models
+|    |    |    \--- DownloadProgress.cs
+|    |    +--- Native
+|    |    |    +--- NativeGgmlLogLevel.cs
+|    |    |    +--- NativeLlamaMethods.cs
+|    |    |    \--- NativeMtmdMethods.cs
+|    |    +--- Providers
+|    |    |    \--- LlamaCpp
+|    |    |         \--- LlamaCppProvider.cs
+|    |    +--- Services
+|    |    |    \--- LocalAiService.cs
+|    |    \--- InstanciumLens.AI.csproj
+|    +--- InstanciumLens.App
+|    |    +--- Components
+|    |    |    +--- Layout
+|    |    |    |    +--- MainLayout.razor
+|    |    |    |    +--- NavMenu.razor
+|    |    |    |    \--- Sidebar.razor
+|    |    |    +--- Pages
+|    |    |    |    +--- Counter.razor
+|    |    |    |    +--- Home.razor
+|    |    |    |    +--- Index.razor
+|    |    |    |    +--- NotFound.razor
+|    |    |    |    +--- SmartInterview.razor
+|    |    |    |    \--- Weather.razor
+|    |    |    +--- Progress
+|    |    |    |    +--- ModelDownloader.razor
+|    |    |    |    \--- Progress.razor
+|    |    |    +--- _Imports.razor
+|    |    |    \--- Routes.razor
+|    |    +--- Models
+|    |    |    +--- ChatMessage.cs
+|    |    |    \--- ProfileItem.cs
+|    |    +--- Platforms
+|    |    |    +--- Android
+|    |    |    |    +--- Resources
+|    |    |    |    |    \--- values
+|    |    |    |    |         \--- colors.xml
+|    |    |    |    +--- AndroidManifest.xml
+|    |    |    |    +--- MainActivity.cs
+|    |    |    |    \--- MainApplication.cs
+|    |    |    +--- iOS
+|    |    |    |    +--- Resources
+|    |    |    |    |    \--- PrivacyInfo.xcprivacy
+|    |    |    |    +--- AppDelegate.cs
+|    |    |    |    +--- Info.plist
+|    |    |    |    \--- Program.cs
+|    |    |    +--- MacCatalyst
+|    |    |    |    +--- AppDelegate.cs
+|    |    |    |    +--- Entitlements.plist
+|    |    |    |    +--- Info.plist
+|    |    |    |    \--- Program.cs
+|    |    |    \--- Windows
+|    |    |         +--- app.manifest
+|    |    |         +--- App.xaml
+|    |    |         +--- App.xaml.cs
+|    |    |         \--- Package.appxmanifest
+|    |    +--- Properties
+|    |    |    \--- launchSettings.json
+|    |    +--- Resources
+|    |    |    +--- AppIcon
+|    |    |    |    +--- appicon.svg
+|    |    |    |    \--- appiconfg.svg
+|    |    |    +--- Fonts
+|    |    |    |    \--- OpenSans-Regular.ttf
+|    |    |    +--- Images
+|    |    |    |    \--- dotnet_bot.svg
+|    |    |    +--- Raw
+|    |    |    |    \--- AboutAssets.txt
+|    |    |    \--- Splash
+|    |    |         \--- splash.svg
+|    |    +--- Services
+|    |    |    +--- MauiAppStateService.cs
+|    |    |    \--- WindowsFolderPickerService.cs
+|    |    +--- wwwroot
+|    |    |    +--- css
+|    |    |    |    +--- 01-theme.css
+|    |    |    |    +--- 02-reset.css
+|    |    |    |    +--- 03-layout.css
+|    |    |    |    +--- 04-sidebar.css
+|    |    |    |    +--- 05-buttons.css
+|    |    |    |    +--- 06-welcome.css
+|    |    |    |    +--- 07-folder-view.css
+|    |    |    |    +--- 08-graphs.css
+|    |    |    |    +--- 09-status-bar.css
+|    |    |    |    +--- 10-animations.css
+|    |    |    |    +--- 11-responsive.css
+|    |    |    |    +--- 12-smart-interview.css
+|    |    |    |    \--- 13-progress.css
+|    |    |    +--- lib
+|    |    |    |    \--- bootstrap
+|    |    |    |         \--- dist
+|    |    |    |              \--- css
+|    |    |    |                   +--- bootstrap.min.css
+|    |    |    |                   \--- bootstrap.min.css.map
+|    |    |    \--- index.html
+|    |    +--- App.xaml
+|    |    +--- App.xaml.cs
+|    |    +--- InstanciumLens.App.csproj
+|    |    +--- InstanciumLens.App.csproj.user
+|    |    +--- MainPage.xaml
+|    |    +--- MainPage.xaml.cs
+|    |    \--- MauiProgram.cs
+|    +--- InstanciumLens.Core
+|    |    +--- Interfaces
+|    |    |    +--- IAppStateService.cs
+|    |    |    +--- IDocumentVision.cs
+|    |    |    +--- IFolderAnalyzer.cs
+|    |    |    +--- IFolderManifestService.cs
+|    |    |    +--- IFolderPickerService.cs
+|    |    |    +--- IGraphRagManager.cs
+|    |    |    +--- IGraphRepository.cs
+|    |    |    +--- IGraphRepositoryFactory.cs
+|    |    |    \--- ILocalModelService.cs
+|    |    +--- Models
+|    |    |    +--- DocumentNode.cs
+|    |    |    +--- FolderManifest.cs
+|    |    |    +--- FolderStatistics.cs
+|    |    |    +--- GraphProfile.cs
+|    |    |    +--- KnowledgeGraph.cs
+|    |    |    \--- ProcessingState.cs
+|    |    +--- Services
+|    |    |    \--- GraphRagManager.cs
+|    |    \--- InstanciumLens.Core.csproj
+|    \--- InstanciumLens.Infrastructure
+|         +--- Data
+|         |    +--- SqLiteGraphRepository.cs
+|         |    \--- SqLiteGraphRepositoryFactory.cs
+|         +--- Services
+|         |    +--- DocumentAnalyzer.cs
+|         |    +--- LocalFolderAnalyzer.cs
+|         |    \--- LocalFolderManifestService.cs
+|         +--- Vision
+|         |    \--- WindowsDocumentVision.cs
+|         \--- InstanciumLens.Infrastructure.csproj
++--- tests
+|    \--- InstanciumLens.Infrastructure.Tests
+|         +--- InstanciumLens.Infrastructure.Tests.csproj
+|         +--- MinimalPdfBuilder.cs
+|         \--- WindowsDocumentVisionTests.cs
++--- .gitattributes
++--- .gitignore
++--- CHANGELOG.md
++--- InstanciumLens.slnx
++--- project_structure.txt
+\--- Show-Structure.ps1
