@@ -1,6 +1,7 @@
-﻿using System;
+// File: src/InstanciumLens.Core/Models/KnowledgeGraph.cs
+#nullable enable
+using System;
 using System.Collections.Generic;
-using System.Text;
 
 namespace InstanciumLens.Core.Models
 {
@@ -14,21 +15,28 @@ namespace InstanciumLens.Core.Models
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();
         public string Name { get; set; } = string.Empty;
-        public string Type { get; set; } = string.Empty; // e.g., "Person", "Organization", "Contract"
+        public string Type { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
-
-        // References to document nodes where this entity was found (for UI proofing)
         public List<string> SourceDocumentNodeIds { get; set; } = new();
-
-        /// <summary>Model self-reported extraction reliability in range [0..1]; default 1.0 keeps legacy graphs valid.</summary>
         public double ConfidenceScore { get; set; } = 1.0;
+        public GraphNodeKind NodeKind { get; set; } = GraphNodeKind.Entity;
+        // Supported examples:
+        // required_relationship:APPROVED_BY
+        // forbidden_relationship:OWNS
+        // max_relationships:OWNS:1
+        // min_confidence:0.8
+        // requires_node_type:Contract
+        public string? RuleExpression { get; set; }
+        public string? Standard { get; set; }
+        public ValidationSeverity? Severity { get; set; }
+        public string? SourceText { get; set; }
     }
 
     public class GraphRelationship
     {
         public string SourceEntityId { get; set; } = string.Empty;
         public string TargetEntityId { get; set; } = string.Empty;
-        public string RelationType { get; set; } = string.Empty; // e.g., "OWNS", "SIGNATORY_OF", "WORKS_AT"
+        public string RelationType { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public double Weight { get; set; } = 1.0;
     }

@@ -1,4 +1,4 @@
-﻿using InstanciumLens.Core.Models;
+using InstanciumLens.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -28,5 +28,6 @@ namespace InstanciumLens.Core.Interfaces
         /// <param name="cancellationToken">Token to cancel the search operation.</param>
         /// <returns>A focused sub-graph containing only relevant nodes and edges.</returns>
         Task<KnowledgeGraph> GetRelevantSubGraphAsync(IEnumerable<string> keywords, CancellationToken cancellationToken = default);
+        Task SaveChangesAsync(GraphChange change, CancellationToken cancellationToken = default);
     }
 }

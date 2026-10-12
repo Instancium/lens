@@ -1,7 +1,4 @@
 <Solution>
-  <Folder Name="/Solution Items/">
-    <File Path="CHANGELOG.md" />
-  </Folder>
   <Folder Name="/src/">
     <Project Path="src/InstanciumLens.AI/InstanciumLens.AI.csproj" />
     <Project Path="src/InstanciumLens.App/InstanciumLens.App.csproj" Id="61f47dcb-81a7-4d08-8744-aac22e1ea954">
