@@ -1,0 +1,198 @@
+﻿/* Engine dashboard: pipeline visualization and gateway telemetry. */
+.engine-page {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    padding: 32px;
+    height: 100%;
+    overflow-y: auto;
+    background: var(--color-background, #F9FAFB);
+}
+
+.engine-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.engine-header__title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--color-text-primary, #111827);
+}
+
+.engine-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid var(--color-border, #E5E7EB);
+    background: var(--color-surface, #FFFFFF);
+    color: var(--color-text-secondary, #6B7280);
+}
+
+.engine-chip__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.engine-chip--ready {
+    color: var(--color-success, #16A34A);
+    border-color: var(--color-success, #16A34A);
+}
+
+.engine-chip--busy {
+    color: var(--color-warning, #D97706);
+    border-color: var(--color-warning, #D97706);
+}
+
+.engine-chip--offline {
+    color: var(--color-text-secondary, #6B7280);
+}
+
+.engine-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.engine-controls__label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text-secondary, #6B7280);
+}
+
+.engine-controls__select {
+    min-width: 280px;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border, #E5E7EB);
+    border-radius: 8px;
+    background: var(--color-surface, #FFFFFF);
+    color: var(--color-text-primary, #111827);
+    font-size: 14px;
+    outline: none;
+}
+
+.engine-controls__run {
+    padding: 10px 22px;
+    border: none;
+    border-radius: 8px;
+    background: var(--color-primary, #2743C9);
+    color: #FFFFFF;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+
+    .engine-controls__run:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+
+.engine-passes {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+}
+
+.engine-pass {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 20px 24px;
+    border: 1px solid var(--color-border, #E5E7EB);
+    border-radius: 12px;
+    background: var(--color-surface, #FFFFFF);
+    opacity: 0.55;
+    transition: opacity 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.engine-pass--active {
+    opacity: 1;
+    border-color: var(--color-primary, #2743C9);
+    box-shadow: 0 0 0 3px rgba(39, 67, 201, 0.12);
+}
+
+.engine-pass--completed {
+    opacity: 1;
+    border-color: var(--color-success, #16A34A);
+}
+
+.engine-pass__index {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--color-text-secondary, #6B7280);
+}
+
+.engine-pass--active .engine-pass__index {
+    color: var(--color-primary, #2743C9);
+}
+
+.engine-pass--completed .engine-pass__index {
+    color: var(--color-success, #16A34A);
+}
+
+.engine-pass__name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--color-text-primary, #111827);
+}
+
+.engine-pass__desc {
+    font-size: 13px;
+    color: var(--color-text-secondary, #6B7280);
+    line-height: 1.5;
+}
+
+.engine-pass__divider {
+    width: 32px;
+    align-self: center;
+    height: 2px;
+    background: var(--color-border, #E5E7EB);
+}
+
+.engine-pass__divider--filled {
+    background: var(--color-success, #16A34A);
+}
+
+.engine-status {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.engine-status__bar {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--color-border, #E5E7EB);
+    overflow: hidden;
+}
+
+.engine-status__fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--color-primary, #2743C9);
+    transition: width 0.3s ease;
+}
+
+.engine-status__message {
+    font-size: 14px;
+    color: var(--color-text-primary, #111827);
+    line-height: 1.5;
+}
+
+.engine-status__docs {
+    font-size: 12px;
+    color: var(--color-text-secondary, #6B7280);
+}

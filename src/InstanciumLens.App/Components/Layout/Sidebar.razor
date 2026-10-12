@@ -1,76 +1,117 @@
-﻿@inject NavigationManager Navigation
+﻿@using InstanciumLens.AI.Services
+@inject GatewaySessionManager SessionManager
+@implements IDisposable
 
-
-<div class="sidebar-container">
+<div class="sidebar @(IsCollapsed ? "collapsed sidebar--collapsed" : string.Empty)">
     <div class="sidebar-header">
-        <img src="logo.png" alt="InstanciumLens" class="sidebar-logo" />
-        <h4 class="sidebar-title">InstanciumLens</h4>
-        <span class="sidebar-subtitle">v2.0 Gateway</span>
+        <h3 class="app-title">InstanciumLens</h3>
+        <div class="gateway-status-container @GetStatusClass()">
+            <span class="status-dot"></span>
+            <span class="status-text">@GetStatusText()</span>
+        </div>
     </div>
 
-    <nav class="sidebar-nav">
-        <div class="nav-item @(IsActive("") ? "active" : "")" @onclick='() => Navigate("")'>
-            <span class="nav-icon">💬</span>
-            <span class="nav-text">AI Assistant</span>
+    <nav class="flex-column sidebar-nav">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                <span class="bi bi-house-door" aria-hidden="true"></span>
+                @if (!IsCollapsed)
+                {
+                    <span class="nav-label">Home</span>
+                }
+            </NavLink>
         </div>
-
-        <div class="nav-item @(IsActive("knowledge") ? "active" : "")" @onclick='() => Navigate("knowledge")'>
-            <span class="nav-icon">🧠</span>
-            <span class="nav-text">Knowledge Graph</span>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="smart-interview">
+                <span class="bi bi-chat-square-text" aria-hidden="true"></span>
+                @if (!IsCollapsed)
+                {
+                    <span class="nav-label">Smart Interview</span>
+                }
+            </NavLink>
         </div>
-
-        <div class="nav-item @(IsActive("engine") ? "active" : "")" @onclick='() => Navigate("engine")'>
-            <span class="nav-icon">⚙️</span>
-            <span class="nav-text">Decision Engine</span>
-        </div>
-
-        <div class="nav-item @(IsActive("telemetry") ? "active" : "")" @onclick='() => Navigate("telemetry")'>
-            <span class="nav-icon">📊</span>
-            <span class="nav-text">Telemetry</span>
-        </div>
-
-        <div class="nav-item @(IsActive("settings") ? "active" : "")" @onclick='() => Navigate("settings")'>
-            <span class="nav-icon">🛠️</span>
-            <span class="nav-text">Settings</span>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="engine">
+                <span class="bi bi-gear-fill" aria-hidden="true"></span>
+                @if (!IsCollapsed)
+                {
+                    <span class="nav-label">Engine</span>
+                }
+            </NavLink>
         </div>
     </nav>
-
-    <div class="sidebar-footer">
-        <div class="connection-status">
-            <span class="status-dot disconnected"></span>
-            <span>Gateway Offline</span>
-        </div>
-    </div>
 </div>
 
 @code {
-    private string? _currentPath;
+    /// <summary>
+    /// Collapse flag supplied by MainLayout; restored after rewrite because the parent
+    /// layout passes it as a component parameter and Blazor fails on unknown parameters.
+    /// Both class names are applied so whichever selector exists in 04-sidebar.css wins.
+    /// </summary>
+    [Parameter]
+    public bool IsCollapsed { get; set; }
 
-    protected override void OnInitialized()
+    /// <summary>Supports two-way binding (@bind-IsCollapsed) if MainLayout uses it.</summary>
+    [Parameter]
+    public EventCallback<bool> IsCollapsedChanged { get; set; }
+
+    private bool _subscribed;
+
+    /// <summary>
+    /// Defers gateway connection until after the first render so an unreachable
+    /// gateway can never break circuit initialization.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        _currentPath = Navigation.ToAbsoluteUri(Navigation.Uri).AbsolutePath.Trim('/');
-        Navigation.LocationChanged += OnLocationChanged;
+        if (firstRender && !_subscribed)
+        {
+            _subscribed = true;
+            SessionManager.OnStatusChanged += HandleStatusChanged;
+            try
+            {
+                await SessionManager.InitializeAsync();
+            }
+            catch
+            {
+                // Gateway offline at startup is a valid state, not a crash.
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+
+        await base.OnAfterRenderAsync(firstRender);
     }
 
-    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    private void HandleStatusChanged()
     {
-        _currentPath = Navigation.ToAbsoluteUri(e.Location).AbsolutePath.Trim('/');
         InvokeAsync(StateHasChanged);
     }
 
-    private bool IsActive(string path)
+    private string GetStatusClass()
     {
-        if (string.IsNullOrEmpty(path) && string.IsNullOrEmpty(_currentPath)) return true;
-        return _currentPath?.StartsWith(path, StringComparison.OrdinalIgnoreCase) ?? false;
+        return SessionManager.ConnectionState switch
+        {
+            Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected => "status-connected",
+            Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Reconnecting => "status-reconnecting",
+            Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connecting => "status-reconnecting",
+            _ => "status-disconnected"
+        };
     }
 
-    private void Navigate(string path)
+    private string GetStatusText()
     {
-        Navigation.NavigateTo(path);
+        return SessionManager.ConnectionState switch
+        {
+            Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected => "AI Gateway Active",
+            Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Reconnecting => "Reconnecting...",
+            Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connecting => "Connecting...",
+            _ => "Gateway Offline"
+        };
     }
 
+    /// <summary>Unsubscribes from status events on disposal.</summary>
     public void Dispose()
     {
-        Navigation.LocationChanged -= OnLocationChanged;
+        SessionManager.OnStatusChanged -= HandleStatusChanged;
     }
 }

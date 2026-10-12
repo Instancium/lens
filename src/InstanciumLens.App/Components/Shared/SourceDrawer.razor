@@ -1,0 +1,57 @@
+﻿@using InstanciumLens.Core.Models
+
+@if (Visible && Fact != null)
+{
+    <div class="drawer-overlay" @onclick="CloseAsync"></div>
+    <aside class="source-drawer">
+        <header class="source-drawer__header">
+            <h2 class="source-drawer__title">Source [@Fact.Index]</h2>
+            <button class="source-drawer__close" @onclick="CloseAsync" aria-label="Close drawer">✕</button>
+        </header>
+
+        <section class="source-drawer__section">
+            <div class="source-drawer__label">Fact</div>
+            <div class="source-drawer__fact">@Fact.Label</div>
+        </section>
+
+        <section class="source-drawer__section">
+            <div class="source-drawer__label">Confidence @Fact.ConfidenceScore:P0</div>
+            <div class="source-drawer__confidence">
+                <div class="source-drawer__confidence-fill" style="width: @(Fact.ConfidenceScore * 100)%;"></div>
+            </div>
+        </section>
+
+        <section class="source-drawer__section">
+            <div class="source-drawer__label">Source documents in graph store</div>
+            @if (Fact.SourceDocumentNodeIds.Count == 0)
+            {
+                <div class="source-drawer__empty">No document bindings recorded for this fact.</div>
+            }
+            else
+            {
+                <ul class="source-drawer__docs">
+                    @foreach (var documentId in Fact.SourceDocumentNodeIds)
+                    {
+                        <li class="source-drawer__doc">@documentId</li>
+                    }
+                </ul>
+            }
+        </section>
+    </aside>
+}
+
+@code {
+    /// <summary>Controls drawer visibility from the parent page.</summary>
+    [Parameter]
+    public bool Visible { get; set; }
+
+    /// <summary>Citation fact displayed inside the drawer.</summary>
+    [Parameter]
+    public CitationFact? Fact { get; set; }
+
+    /// <summary>Raised when the user closes the drawer via overlay or button.</summary>
+    [Parameter]
+    public EventCallback OnCloseClick { get; set; }
+
+    private Task CloseAsync() => OnCloseClick.InvokeAsync();
+}

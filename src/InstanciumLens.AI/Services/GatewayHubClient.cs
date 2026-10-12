@@ -3,13 +3,16 @@ using InstanciumLens.AI.Contracts;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading.Channels;
 
 namespace InstanciumLens.AI.Services
 {
     /// <summary>
     /// SignalR implementation of the gateway facade. Owns pending stream completions,
     /// routes server callbacks and enforces the ephemeral-session discipline from the wire contract.
+    /// Supports both batch completion (Task) and live token streaming (IAsyncEnumerable).
     /// </summary>
     public sealed class GatewayHubClient : IGatewayHubClient
     {
@@ -105,41 +108,38 @@ namespace InstanciumLens.AI.Services
             bool ephemeral,
             CancellationToken cancellationToken = default)
         {
-            if (string.IsNullOrWhiteSpace(sessionId)) throw new ArgumentNullException(nameof(sessionId));
-            if (messages == null || messages.Count == 0) throw new ArgumentException("Message sequence must not be empty.", nameof(messages));
+            ValidateArguments(sessionId, messages);
 
-            await EnsureConnectedAsync(cancellationToken);
-            await JoinAsync(sessionId, repoId, ephemeral, cancellationToken);
+            var pending = new PendingRequest();
+            await RunCoreAsync(sessionId, repoId, messages, ephemeral, pending, cancellationToken);
+            return await pending.Completion.Task;
+        }
 
-            int attempt = 0;
-            while (true)
+        /// <inheritdoc/>
+        public async IAsyncEnumerable<string> RunCompletionStreamAsync(
+            string sessionId,
+            string repoId,
+            IReadOnlyList<GatewayChatMessage> messages,
+            bool ephemeral,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ValidateArguments(sessionId, messages);
+
+            // Iterator body intentionally has no try/catch: failures surface through the channel
+            // completion so yield semantics stay compliant with the iterator rules.
+            var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
             {
-                var pending = new PendingRequest();
-                _pending[sessionId] = pending;
-                try
-                {
-                    foreach (var message in messages)
-                    {
-                        await _connection.InvokeAsync("SendPromptDelta", sessionId, message, cancellationToken);
-                    }
+                SingleReader = true,
+                SingleWriter = true
+            });
 
-                    return await pending.Completion.Task.WaitAsync(cancellationToken);
-                }
-                catch (Exception ex) when (attempt == 0 && IsSessionEvicted(ex))
-                {
-                    // Wire contract 8.2: single retry with re-Join before emitting tokens.
-                    attempt++;
-                    _pending.TryRemove(sessionId, out _);
-                    await JoinAsync(sessionId, repoId, ephemeral, cancellationToken);
-                }
-                catch
-                {
-                    _pending.TryRemove(sessionId, out _);
-                    throw;
-                }
+            var pending = new PendingRequest { Stream = channel };
+            _ = RunCoreAsync(sessionId, repoId, messages, ephemeral, pending, cancellationToken);
+
+            await foreach (var token in channel.Reader.ReadAllAsync(cancellationToken))
+            {
+                yield return token;
             }
-            // DestroySession is intentionally NOT here: JoinAsync of the next attempt must see a clean slate,
-            // and the finally-freeing happens in the wrapper below.
         }
 
         /// <inheritdoc/>
@@ -175,6 +175,68 @@ namespace InstanciumLens.AI.Services
         public Task<GatewayStatusDetails> GetGatewayStatusAsync(CancellationToken cancellationToken = default) =>
             _connection.InvokeAsync<GatewayStatusDetails>("GetGatewayStatus", cancellationToken);
 
+        private static void ValidateArguments(string sessionId, IReadOnlyList<GatewayChatMessage> messages)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId)) throw new ArgumentNullException(nameof(sessionId));
+            if (messages == null || messages.Count == 0) throw new ArgumentException("Message sequence must not be empty.", nameof(messages));
+        }
+
+        /// <summary>
+        /// Shared lifecycle core: connect, join, ephemeral mark, send sequence, single retry with
+        /// re-join on eviction, best-effort destroy in every exit path.
+        /// </summary>
+        private async Task RunCoreAsync(
+            string sessionId,
+            string repoId,
+            IReadOnlyList<GatewayChatMessage> messages,
+            bool ephemeral,
+            PendingRequest pending,
+            CancellationToken cancellationToken)
+        {
+            _pending[sessionId] = pending;
+            try
+            {
+                await EnsureConnectedAsync(cancellationToken);
+                await JoinAsync(sessionId, repoId, ephemeral, cancellationToken);
+
+                int attempt = 0;
+                while (true)
+                {
+                    try
+                    {
+                        foreach (var message in messages)
+                        {
+                            await _connection.InvokeAsync("SendPromptDelta", sessionId, message, cancellationToken);
+                        }
+
+                        await pending.Completion.Task.WaitAsync(cancellationToken);
+                        return;
+                    }
+                    catch (Exception ex) when (attempt == 0 && IsSessionEvicted(ex))
+                    {
+                        // Wire contract 8.2: single retry with re-Join; a fresh completion target is
+                        // required because the evicted stream already faulted the previous one.
+                        attempt++;
+                        var retried = new PendingRequest { Stream = pending.Stream };
+                        pending = retried;
+                        _pending[sessionId] = retried;
+                        await JoinAsync(sessionId, repoId, ephemeral, cancellationToken);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                pending.Completion.TrySetException(ex);
+                pending.Stream?.Writer.TryComplete(ex);
+            }
+            finally
+            {
+                _pending.TryRemove(sessionId, out _);
+                pending.Stream?.Writer.TryComplete(null);
+                await DestroySessionAsync(sessionId);
+            }
+        }
+
         private async Task JoinAsync(string sessionId, string repoId, bool ephemeral, CancellationToken cancellationToken)
         {
             await _connection.InvokeAsync("JoinSession", sessionId, repoId ?? string.Empty, cancellationToken);
@@ -191,10 +253,19 @@ namespace InstanciumLens.AI.Services
                 return;
             }
 
-            pending.Buffer.Append(delta.Content);
+            if (pending.Stream != null)
+            {
+                pending.Stream.Writer.TryWrite(delta.Content);
+            }
+            else
+            {
+                pending.Buffer.Append(delta.Content);
+            }
+
             if (delta.IsDone)
             {
                 _pending.TryRemove(delta.SessionId, out _);
+                pending.Stream?.Writer.TryComplete(null);
                 pending.Completion.TrySetResult(pending.Buffer.ToString());
             }
         }
@@ -236,6 +307,7 @@ namespace InstanciumLens.AI.Services
             if (_pending.TryRemove(sessionId, out var pending))
             {
                 pending.Completion.TrySetException(exception);
+                pending.Stream?.Writer.TryComplete(exception);
             }
         }
 
@@ -250,6 +322,7 @@ namespace InstanciumLens.AI.Services
         private sealed class PendingRequest
         {
             public StringBuilder Buffer { get; } = new();
+            public Channel<string>? Stream { get; init; }
             public TaskCompletionSource<string> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
     }

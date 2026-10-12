@@ -1,0 +1,186 @@
+﻿@page "/engine"
+@using System.Text.Json
+@using InstanciumLens.Core.Models
+@inject InstanciumLens.Core.Interfaces.IAppStateService AppState
+@inject InstanciumLens.Core.Interfaces.IGraphRagManager GraphRag
+@inject InstanciumLens.AI.Abstractions.IGatewayHubClient Gateway
+@implements IDisposable
+
+<div class="engine-page">
+    <header class="engine-header">
+        <h1 class="engine-header__title">Analysis Engine</h1>
+        <div class="engine-chip engine-chip--@StatusClass()">
+            <span class="engine-chip__dot"></span>
+            <span class="engine-chip__text">@StatusText()</span>
+        </div>
+    </header>
+
+    <section class="engine-controls">
+        <label class="engine-controls__label" for="engine-profile-select">Profile:</label>
+        <select id="engine-profile-select" class="engine-controls__select" @bind="_selectedProfileId">
+            <option value="">— select profile —</option>
+            @foreach (var profile in _profiles)
+            {
+                <option value="@profile.Id">@profile.Icon @profile.DisplayName</option>
+            }
+        </select>
+        <button class="engine-controls__run"
+                disabled="@(_state.IsRunning || string.IsNullOrEmpty(_selectedProfileId) || _profiles.Count == 0)"
+                @onclick="RunAsync">Run pipeline</button>
+    </section>
+
+    <section class="engine-passes">
+        <div class="engine-pass @PassClass(ProcessingPhase.Pass1_TextExtraction)">
+            <div class="engine-pass__index">Pass 1</div>
+            <div class="engine-pass__name">Text Extraction</div>
+            <div class="engine-pass__desc">PDF rendering and Windows OCR</div>
+        </div>
+        <div class="engine-pass__divider @DividerClass(ProcessingPhase.Pass1_TextExtraction)"></div>
+        <div class="engine-pass @PassClass(ProcessingPhase.Pass2_EntityResolution)">
+            <div class="engine-pass__index">Pass 2</div>
+            <div class="engine-pass__name">Entity Resolution</div>
+            <div class="engine-pass__desc">Fact extraction via gateway LLM</div>
+        </div>
+        <div class="engine-pass__divider @DividerClass(ProcessingPhase.Pass2_EntityResolution)"></div>
+        <div class="engine-pass @PassClass(ProcessingPhase.Pass3_GraphBuilding)">
+            <div class="engine-pass__index">Pass 3</div>
+            <div class="engine-pass__name">Graph Building</div>
+            <div class="engine-pass__desc">Relationship persistence to SQLite</div>
+        </div>
+    </section>
+
+    <section class="engine-status">
+        <div class="engine-status__bar">
+            <div class="engine-status__fill" style="width: @_state.ProgressPercentage%;"></div>
+        </div>
+        <div class="engine-status__message">@_state.StatusMessage</div>
+        <div class="engine-status__docs">@_state.ProcessedDocuments / @_state.TotalDocuments documents</div>
+    </section>
+</div>
+
+@code {
+    private readonly List<GraphProfile> _profiles = new();
+    private ProcessingState _state = new();
+    private string _selectedProfileId = string.Empty;
+
+    /// <summary>Loads available profiles and subscribes to gateway telemetry.</summary>
+    protected override async Task OnInitializedAsync()
+    {
+        Gateway.GatewayStatusReceived += HandleGatewayStatus;
+        await LoadProfilesAsync();
+    }
+
+    /// <summary>Reads profile cards from the folder manifest.</summary>
+    private async Task LoadProfilesAsync()
+    {
+        _profiles.Clear();
+        string? folder = AppState.CurrentFolderPath;
+        if (string.IsNullOrEmpty(folder))
+        {
+            return;
+        }
+
+        try
+        {
+            string manifestPath = System.IO.Path.Combine(folder, ".instancium", "manifest.json");
+            if (System.IO.File.Exists(manifestPath))
+            {
+                string json = await System.IO.File.ReadAllTextAsync(manifestPath);
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var manifest = JsonSerializer.Deserialize<FolderManifest>(json, options);
+                if (manifest?.Profiles != null)
+                {
+                    _profiles.AddRange(manifest.Profiles);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _state.StatusMessage = $"Manifest read failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>Executes the three-pass pipeline with live progress projection.</summary>
+    private async Task RunAsync()
+    {
+        string? folder = AppState.CurrentFolderPath;
+        var profile = _profiles.FirstOrDefault(p => p.Id == _selectedProfileId);
+        if (string.IsNullOrEmpty(folder) || profile == null)
+        {
+            return;
+        }
+
+        _state = new ProcessingState();
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            await GraphRag.BuildGraphForFolderAsync(folder, profile, update =>
+            {
+                _state = update;
+                InvokeAsync(StateHasChanged);
+            });
+        }
+        catch (Exception ex)
+        {
+            _state = new ProcessingState
+            {
+                CurrentPhase = ProcessingPhase.Error,
+                StatusMessage = $"Pipeline failed: {ex.Message}"
+            };
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void HandleGatewayStatus(InstanciumLens.AI.Contracts.GatewayStatusDetails status)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string PassClass(ProcessingPhase targetPhase)
+    {
+        if (_state.CurrentPhase == ProcessingPhase.Completed || _state.CurrentPhase > targetPhase)
+        {
+            return "engine-pass--completed";
+        }
+
+        return _state.CurrentPhase == targetPhase ? "engine-pass--active" : "engine-pass--pending";
+    }
+
+    private string DividerClass(ProcessingPhase sourcePhase)
+    {
+        return (_state.CurrentPhase > sourcePhase || _state.CurrentPhase == ProcessingPhase.Completed)
+            ? "engine-pass__divider--filled"
+            : string.Empty;
+    }
+
+    private string StatusClass()
+    {
+        var status = Gateway.LastStatus;
+        if (status == null)
+        {
+            return "offline";
+        }
+
+        return status.Status == InstanciumLens.AI.Contracts.GatewayOperationalStatus.Ready ? "ready" : "busy";
+    }
+
+    private string StatusText()
+    {
+        var status = Gateway.LastStatus;
+        if (status == null)
+        {
+            return "Gateway status unknown";
+        }
+
+        return status.Status == InstanciumLens.AI.Contracts.GatewayOperationalStatus.Ready
+            ? $"Model ready: {status.ActiveModelId ?? "active"}"
+            : $"Gateway: {status.StageDescription ?? status.Status.ToString()}";
+    }
+
+    /// <summary>Unsubscribes from gateway telemetry on disposal.</summary>
+    public void Dispose()
+    {
+        Gateway.GatewayStatusReceived -= HandleGatewayStatus;
+    }
+}

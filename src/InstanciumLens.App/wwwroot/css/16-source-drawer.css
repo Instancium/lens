@@ -1,0 +1,157 @@
+﻿/* Source drawer: right-side overlay panel with citation provenance. */
+.drawer-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(17, 24, 39, 0.35);
+    backdrop-filter: blur(2px);
+    z-index: 900;
+}
+
+.source-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 380px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 24px;
+    background: var(--color-surface, #FFFFFF);
+    border-left: 1px solid var(--color-border, #E5E7EB);
+    box-shadow: -12px 0 32px rgba(17, 24, 39, 0.12);
+    z-index: 901;
+    overflow-y: auto;
+}
+
+.source-drawer__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.source-drawer__title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--color-text-primary, #111827);
+}
+
+.source-drawer__close {
+    border: none;
+    background: transparent;
+    font-size: 16px;
+    cursor: pointer;
+    color: var(--color-text-secondary, #6B7280);
+    padding: 6px;
+    border-radius: 6px;
+}
+
+    .source-drawer__close:hover {
+        background: var(--color-background, #F9FAFB);
+        color: var(--color-text-primary, #111827);
+    }
+
+.source-drawer__section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.source-drawer__label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-secondary, #6B7280);
+}
+
+.source-drawer__fact {
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--color-text-primary, #111827);
+}
+
+.source-drawer__confidence {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--color-border, #E5E7EB);
+    overflow: hidden;
+}
+
+.source-drawer__confidence-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--color-primary, #2743C9);
+    transition: width 0.3s ease;
+}
+
+.source-drawer__empty {
+    font-size: 13px;
+    color: var(--color-text-secondary, #6B7280);
+}
+
+.source-drawer__docs {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.source-drawer__doc {
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: 12px;
+    color: var(--color-text-secondary, #6B7280);
+    background: var(--color-background, #F9FAFB);
+    border: 1px solid var(--color-border, #E5E7EB);
+    border-radius: 6px;
+    padding: 6px 8px;
+    word-break: break-all;
+}
+
+/* Footnote chips under assistant messages. */
+.chat-footnotes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.chat-footnote {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--color-border, #E5E7EB);
+    background: var(--color-surface, #FFFFFF);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--color-text-primary, #111827);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+    .chat-footnote:hover {
+        border-color: var(--color-primary, #2743C9);
+        box-shadow: 0 0 0 3px rgba(39, 67, 201, 0.12);
+    }
+
+.chat-footnote__index {
+    font-weight: 700;
+    color: var(--color-primary, #2743C9);
+}
+
+.chat-footnote__label {
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-footnote__confidence {
+    color: var(--color-text-secondary, #6B7280);
+    font-weight: 600;
+}
