@@ -1,4 +1,5 @@
-﻿using InstanciumLens.AI.Abstractions;
+﻿// src/InstanciumLens.App/MauiProgram.cs
+using InstanciumLens.AI.Abstractions;
 using InstanciumLens.AI.Configuration;
 using InstanciumLens.AI.Services;
 using InstanciumLens.App.Services;
@@ -13,10 +14,8 @@ using Microsoft.Maui.Storage;
 
 namespace InstanciumLens.App
 {
-    /// <summary>Application entry point and DI container configuration.</summary>
     public static class MauiProgram
     {
-        /// <summary>Creates and configures the MAUI application instance.</summary>
         public static MauiApp CreateMauiApp()
         {
             var builder = MauiApp.CreateBuilder();
@@ -28,19 +27,18 @@ namespace InstanciumLens.App
                 });
 
             builder.Services.AddMauiBlazorWebView();
+
 #if DEBUG
             builder.Services.AddBlazorWebViewDeveloperTools();
             builder.Logging.AddDebug();
 #endif
 
-            // Gateway endpoint settings persisted in OS preferences.
             var gatewaySettings = new GatewaySettings();
             gatewaySettings.BaseUrl = Preferences.Default.Get("GatewayBaseUrl", gatewaySettings.BaseUrl);
             gatewaySettings.ApiKey = Preferences.Default.Get("GatewayApiKey", gatewaySettings.ApiKey);
             gatewaySettings.ActiveRepoId = Preferences.Default.Get("GatewayActiveRepoId", gatewaySettings.ActiveRepoId);
             builder.Services.AddSingleton(gatewaySettings);
 
-            // Single shared SignalR connection; token travels via Authorization header per wire contract.
             builder.Services.AddSingleton(_ => new HubConnectionBuilder()
                 .WithUrl(gatewaySettings.HubUrl, options =>
                 {
@@ -50,10 +48,10 @@ namespace InstanciumLens.App
                 .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30) })
                 .Build());
 
-            builder.Services.AddSingleton<IGatewayHubClient, GatewayHubClient>();
+            builder.Services.AddSingleton<GatewayConnectionService>();
             builder.Services.AddSingleton<GatewaySessionManager>();
+            builder.Services.AddSingleton<IGatewayHubClient, GatewayHubClient>();
             builder.Services.AddSingleton<ILocalModelService, GatewayAiService>();
-
             builder.Services.AddSingleton<IDocumentVision, WindowsDocumentVision>();
             builder.Services.AddTransient<Func<string, IGraphRepository>>(provider =>
                 folderPath => new SqLiteGraphRepository(folderPath));

@@ -1,103 +1,40 @@
-﻿using Microsoft.AspNetCore.SignalR.Client;
-using System;
-using System.Threading.Tasks;
+﻿// src/InstanciumLens.AI/Services/GatewaySessionManager.cs
+using InstanciumLens.AI.Contracts;
+using Microsoft.AspNetCore.SignalR.Client;
 
 namespace InstanciumLens.AI.Services
 {
     /// <summary>
-    /// Manages the lifecycle and state of the connection to InstantAIGate.
+    /// Backward-compatible facade over GatewayConnectionService for pages written against
+    /// the pre-refactor session manager API. Keeps old injection points compiling.
     /// </summary>
-    public class GatewaySessionManager : IAsyncDisposable
+    public sealed class GatewaySessionManager
     {
-        private readonly HubConnection _hubConnection;
+        private readonly GatewayConnectionService _connectionService;
 
-        /// <summary>
-        /// Triggered when the connection state changes (Connected, Disconnected, Reconnecting).
-        /// Initialized with an empty delegate to satisfy strict nullable reference types
-        /// and avoid null-checks on invocation.
-        /// </summary>
-        public event Action OnStatusChanged = delegate { };
+        /// <summary>Raised on any connection/state/telemetry change.</summary>
+        public event Action? OnStatusChanged;
 
-        /// <summary>
-        /// Gets a value indicating whether the client is currently connected to the gateway.
-        /// </summary>
-        public bool IsConnected => _hubConnection.State == HubConnectionState.Connected;
-
-        /// <summary>
-        /// Gets the current connection state.
-        /// </summary>
-        public HubConnectionState ConnectionState => _hubConnection.State;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="GatewaySessionManager"/> class.
-        /// </summary>
-        /// <param name="hubConnection">The injected SignalR HubConnection.</param>
-        public GatewaySessionManager(HubConnection hubConnection)
+        /// <summary>Wraps the connection service and forwards its state changes.</summary>
+        public GatewaySessionManager(GatewayConnectionService connectionService)
         {
-            _hubConnection = hubConnection ?? throw new ArgumentNullException(nameof(hubConnection));
-
-            _hubConnection.Closed += OnConnectionClosed;
-            _hubConnection.Reconnecting += OnConnectionReconnecting;
-            _hubConnection.Reconnected += OnConnectionReconnected;
+            _connectionService = connectionService ?? throw new ArgumentNullException(nameof(connectionService));
+            _connectionService.StateChanged += () => OnStatusChanged?.Invoke();
         }
 
-        /// <summary>
-        /// Initializes the connection to the gateway asynchronously.
-        /// Should be called during app startup or layout initialization.
-        /// </summary>
-        public async Task InitializeAsync()
-        {
-            if (_hubConnection.State == HubConnectionState.Disconnected)
-            {
-                try
-                {
-                    await _hubConnection.StartAsync();
-                    OnStatusChanged();
-                }
-                catch 
-                {
-                    // Swallowing startup exceptions intentionally: the UI will reflect
-                    // the disconnected state via the status change event triggered below.
-                    OnStatusChanged();
-                }
-            }
-        }
+        /// <summary>Current SignalR connection state.</summary>
+        public HubConnectionState State => _connectionService.ConnectionState;
 
-        private async Task OnConnectionClosed(Exception? error)
-        {
-            OnStatusChanged();
-            // Automatic reconnect logic is handled by WithAutomaticReconnect() in the builder, 
-            // but we can add custom logic here if needed.
-            await Task.CompletedTask;
-        }
+        /// <summary>True when the hub connection is established.</summary>
+        public bool IsConnected => _connectionService.ConnectionState == HubConnectionState.Connected;
 
-        private Task OnConnectionReconnecting(Exception? error)
-        {
-            OnStatusChanged();
-            return Task.CompletedTask;
-        }
+        /// <summary>Latest telemetry snapshot, if any.</summary>
+        public GatewayStatusDetails? LastStatus => _connectionService.LastStatus;
 
-        private Task OnConnectionReconnected(string? connectionId)
-        {
-            OnStatusChanged();
-            // Server evicts all sessions of the old ConnectionId on drop; 
-            // UI must handle re-joining via status change notification.
-            return Task.CompletedTask;
-        }
+        /// <summary>Reason of the last connection failure, if any.</summary>
+        public string? LastError => _connectionService.LastError;
 
-        /// <summary>
-        /// Disposes the HubConnection and unsubscribes from events.
-        /// </summary>
-        public async ValueTask DisposeAsync()
-        {
-            if (_hubConnection != null)
-            {
-                _hubConnection.Closed -= OnConnectionClosed;
-                _hubConnection.Reconnecting -= OnConnectionReconnecting;
-                _hubConnection.Reconnected -= OnConnectionReconnected;
-
-                await _hubConnection.DisposeAsync();
-            }
-        }
+        /// <summary>Starts connection with background retry. Safe to call multiple times.</summary>
+        public Task InitializeAsync() => _connectionService.StartAsync();
     }
 }
