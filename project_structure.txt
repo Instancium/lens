@@ -1,22 +1,18 @@
 ﻿+--- src
 |    +--- InstanciumLens.AI
 |    |    +--- Abstractions
-|    |    |    \--- IInferenceProvider.cs
+|    |    |    \--- IGatewayHubClient.cs
 |    |    +--- Configuration
-|    |    |    \--- ModelSettings.cs
-|    |    +--- Downloader
-|    |    |    \--- ModelProvisioning.cs
+|    |    |    \--- GatewaySettings.cs
+|    |    +--- Contracts
+|    |    |    \--- GatewayWireDtos.cs
 |    |    +--- Models
 |    |    |    \--- DownloadProgress.cs
-|    |    +--- Native
-|    |    |    +--- NativeGgmlLogLevel.cs
-|    |    |    +--- NativeLlamaMethods.cs
-|    |    |    \--- NativeMtmdMethods.cs
-|    |    +--- Providers
-|    |    |    \--- LlamaCpp
-|    |    |         \--- LlamaCppProvider.cs
 |    |    +--- Services
-|    |    |    \--- LocalAiService.cs
+|    |    |    +--- GatewayAiService.cs
+|    |    |    +--- GatewayExceptions.cs
+|    |    |    +--- GatewayHubClient.cs
+|    |    |    \--- GatewaySessionManager.cs
 |    |    \--- InstanciumLens.AI.csproj
 |    +--- InstanciumLens.App
 |    |    +--- Components
@@ -25,15 +21,18 @@
 |    |    |    |    +--- NavMenu.razor
 |    |    |    |    \--- Sidebar.razor
 |    |    |    +--- Pages
+|    |    |    |    +--- Chat.razor
 |    |    |    |    +--- Counter.razor
+|    |    |    |    +--- Engine.razor
 |    |    |    |    +--- Home.razor
 |    |    |    |    +--- Index.razor
 |    |    |    |    +--- NotFound.razor
 |    |    |    |    +--- SmartInterview.razor
 |    |    |    |    \--- Weather.razor
 |    |    |    +--- Progress
-|    |    |    |    +--- ModelDownloader.razor
 |    |    |    |    \--- Progress.razor
+|    |    |    +--- Shared
+|    |    |    |    \--- SourceDrawer.razor
 |    |    |    +--- _Imports.razor
 |    |    |    \--- Routes.razor
 |    |    +--- Models
@@ -94,7 +93,12 @@
 |    |    |    |    +--- 10-animations.css
 |    |    |    |    +--- 11-responsive.css
 |    |    |    |    +--- 12-smart-interview.css
-|    |    |    |    \--- 13-progress.css
+|    |    |    |    +--- 13-progress.css
+|    |    |    |    +--- 14-chat.css
+|    |    |    |    +--- 15-engine.css
+|    |    |    |    \--- 16-source-drawer.css
+|    |    |    +--- js
+|    |    |    |    \--- scroll.js
 |    |    |    +--- lib
 |    |    |    |    \--- bootstrap
 |    |    |    |         \--- dist
@@ -121,6 +125,7 @@
 |    |    |    +--- IGraphRepositoryFactory.cs
 |    |    |    \--- ILocalModelService.cs
 |    |    +--- Models
+|    |    |    +--- CitationContext.cs
 |    |    |    +--- DocumentNode.cs
 |    |    |    +--- FolderManifest.cs
 |    |    |    +--- FolderStatistics.cs
@@ -148,7 +153,6 @@
 |         \--- WindowsDocumentVisionTests.cs
 +--- .gitattributes
 +--- .gitignore
-+--- CHANGELOG.md
 +--- InstanciumLens.slnx
 +--- project_structure.txt
 \--- Show-Structure.ps1
