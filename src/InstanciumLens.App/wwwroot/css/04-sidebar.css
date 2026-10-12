@@ -43,6 +43,12 @@
         display: none;
     }
 
+    /* Collapsed state hides the footer and settings panel: 60px strip has no room for labels */
+    .sidebar--collapsed .sidebar__footer,
+    .sidebar--collapsed .sidebar__settings {
+        display: none;
+    }
+
 /* Sidebar Header */
 .sidebar__header {
     display: flex;
@@ -167,6 +173,89 @@
     font-weight: 500;
 }
 
+/* Navigation Active State */
+.sidebar__nav {
+    margin-bottom: 24px;
+}
+
+.sidebar__menu-item--active,
+.sidebar__menu-item--active:hover {
+    background: rgba(79, 70, 229, 0.08);
+    color: var(--color-primary);
+    font-weight: 600;
+}
+
+/* Profile Cards (business-facing view of graph profiles) */
+.sidebar__profiles {
+    margin-bottom: 24px;
+}
+
+.profile-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 8px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+
+    .profile-card:hover {
+        border-color: var(--color-primary);
+        box-shadow: 0 4px 12px rgba(17, 17, 17, 0.06);
+        transform: translateY(-1px);
+    }
+
+.profile-card__icon {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    line-height: 1;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+}
+
+.profile-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.profile-card__name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.profile-card__desc {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.profile-card__meta {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--color-text-light);
+}
+
 /* Empty State */
 .sidebar__empty {
     text-align: center;
@@ -221,6 +310,16 @@
     color: var(--color-primary);
 }
 
+.system-status__icon--error {
+    background: rgba(239, 68, 68, 0.1);
+    color: #EF4444;
+}
+
+.system-status__icon--offline {
+    background: rgba(107, 114, 128, 0.12);
+    color: #6B7280;
+}
+
 .system-status__icon svg {
     width: 18px;
     height: 18px;
@@ -255,4 +354,64 @@
     overflow: hidden;
 }
 
+.system-status__progress-fill {
+    height: 100%;
+    width: 0;
+    background: var(--color-primary);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
 
+/* ============================================
+   Settings Panel (Progressive Disclosure)
+   ============================================ */
+.sidebar__settings {
+    padding: 16px;
+    border-top: 1px solid var(--color-border);
+    background: var(--color-bg);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sidebar__settings-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-light);
+}
+
+.sidebar__settings-input {
+    width: 100%;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+    .sidebar__settings-input:focus {
+        outline: none;
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+    }
+
+.sidebar__settings-save {
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #FFFFFF;
+    background: var(--color-primary);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+    .sidebar__settings-save:hover {
+        background: var(--color-primary-hover);
+    }
