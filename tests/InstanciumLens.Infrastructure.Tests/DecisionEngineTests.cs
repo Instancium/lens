@@ -1,10 +1,9 @@
-﻿// File: tests/InstanciumLens.Infrastructure.Tests/DecisionEngineTests.cs
-// [AI DIFF]: added tests for branch isolation, conflict detection, and constraint rules
+// File: tests/InstanciumLens.Infrastructure.Tests/DecisionEngineTests.cs
 using InstanciumLens.Core.Interfaces;
 using InstanciumLens.Core.Models;
 using InstanciumLens.Core.Services;
 using InstanciumLens.Infrastructure.Data;
-using Microsoft.Data.Sqlite; // [AI DIFF]: required to release pooled handles before temp folder cleanup
+using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -53,7 +52,6 @@ namespace InstanciumLens.Infrastructure.Tests
 
         public void Dispose()
         {
-            // [AI DIFF]: pooled SQLite handles lock .db files on Windows; release them before recursive delete
             SqliteConnection.ClearAllPools();
 
             if (Directory.Exists(_rootFolder))

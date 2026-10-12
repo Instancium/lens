@@ -1,9 +1,9 @@
-﻿// File: src/InstanciumLens.Infrastructure/Data/SqLiteGraphRepositoryFactory.cs
+// File: src/InstanciumLens.Infrastructure/Data/SqLiteGraphRepositoryFactory.cs
 using System;
 using System.IO;
 using System.Linq;
 using InstanciumLens.Core.Interfaces;
-using Microsoft.Data.Sqlite; // [AI DIFF]: required to release pooled handles before branch file deletion
+using Microsoft.Data.Sqlite;
 
 namespace InstanciumLens.Infrastructure.Data
 {
@@ -15,8 +15,6 @@ namespace InstanciumLens.Infrastructure.Data
 
             return new SqLiteGraphRepository(targetFolderPath, profileId);
         }
-
-        // [AI DIFF]: creates branch database from master when branch does not exist
         public IGraphRepository CreateBranchRepository(string targetFolderPath, string profileId, string branchId)
         {
             ValidateFolderPath(targetFolderPath);
@@ -38,15 +36,11 @@ namespace InstanciumLens.Infrastructure.Data
 
             return new SqLiteGraphRepository(targetFolderPath, profileId, branchId);
         }
-
-        // [AI DIFF]: removes isolated branch database file
         public void DeleteBranch(string targetFolderPath, string profileId, string branchId)
         {
             ValidateFolderPath(targetFolderPath);
 
             string branchPath = GetBranchDatabasePath(targetFolderPath, profileId, branchId);
-
-            // [AI DIFF]: pooled SQLite handles keep the branch file locked on Windows; release them first
             ClearConnectionPool(branchPath);
 
             if (File.Exists(branchPath))
@@ -54,8 +48,6 @@ namespace InstanciumLens.Infrastructure.Data
                 File.Delete(branchPath);
             }
         }
-
-        // [AI DIFF]: clears the ADO.NET connection pool bound to one specific database file
         private static void ClearConnectionPool(string databasePath)
         {
             using var connection = new SqliteConnection($"Data Source={databasePath}");

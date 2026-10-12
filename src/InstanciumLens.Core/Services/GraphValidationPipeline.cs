@@ -1,5 +1,4 @@
-﻿// File: src/InstanciumLens.Core/Services/GraphValidationPipeline.cs
-// [AI DIFF]: added for WBS stage 5 validation pipeline
+// File: src/InstanciumLens.Core/Services/GraphValidationPipeline.cs
 using System;
 using System.Collections.Generic;
 using System.Globalization;

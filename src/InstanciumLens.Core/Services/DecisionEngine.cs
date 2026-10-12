@@ -1,5 +1,4 @@
-﻿// File: src/InstanciumLens.Core/Services/DecisionEngine.cs
-// [AI DIFF]: added for WBS stage 5 decision engine and what-if branches
+// File: src/InstanciumLens.Core/Services/DecisionEngine.cs
 using System;
 using System.IO;
 using System.Linq;

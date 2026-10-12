@@ -1,4 +1,4 @@
-﻿// File: src/InstanciumLens.Infrastructure/Data/SqLiteGraphRepository.cs
+// File: src/InstanciumLens.Infrastructure/Data/SqLiteGraphRepository.cs
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -25,8 +25,6 @@ namespace InstanciumLens.Infrastructure.Data
             : this(targetFolderPath, profileName, null)
         {
         }
-
-        // [AI DIFF]: added branchId support for isolated what-if sandbox databases
         public SqLiteGraphRepository(string targetFolderPath, string profileName, string? branchId)
         {
             if (string.IsNullOrWhiteSpace(targetFolderPath))
@@ -95,8 +93,6 @@ CREATE INDEX IF NOT EXISTS IX_Entities_NodeKind ON Entities(NodeKind);
 
                 command.ExecuteNonQuery();
             }
-
-            // [AI DIFF]: migrate databases created before WBS stage 5
             EnsureEntityColumn(connection, "NodeKind", "TEXT NOT NULL DEFAULT 'Entity'");
             EnsureEntityColumn(connection, "RuleExpression", "TEXT");
             EnsureEntityColumn(connection, "Standard", "TEXT");
@@ -171,8 +167,6 @@ CREATE INDEX IF NOT EXISTS IX_Entities_NodeKind ON Entities(NodeKind);
                 throw;
             }
         }
-
-        // [AI DIFF]: applies explicit graph mutations for master or sandbox branch
         public async Task SaveChangesAsync(GraphChange change, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(change);

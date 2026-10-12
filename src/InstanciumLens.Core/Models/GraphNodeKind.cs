@@ -1,5 +1,4 @@
-﻿// File: src/InstanciumLens.Core/Models/GraphNodeKind.cs
-// [AI DIFF]: added for WBS stage 5 decision engine
+// File: src/InstanciumLens.Core/Models/GraphNodeKind.cs
 namespace InstanciumLens.Core.Models
 {
     public enum GraphNodeKind

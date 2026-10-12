@@ -1,5 +1,4 @@
-﻿// File: src/InstanciumLens.Core/Interfaces/IDecisionEngine.cs
-// [AI DIFF]: added for WBS stage 5 decision engine and what-if analysis
+// File: src/InstanciumLens.Core/Interfaces/IDecisionEngine.cs
 using InstanciumLens.Core.Models;
 
 namespace InstanciumLens.Core.Interfaces

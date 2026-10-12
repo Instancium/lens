@@ -1,4 +1,4 @@
-﻿// src/InstanciumLens.App/MauiProgram.cs
+// src/InstanciumLens.App/MauiProgram.cs
 using InstanciumLens.AI.Abstractions;
 using InstanciumLens.AI.Configuration;
 using InstanciumLens.AI.Services;
@@ -62,8 +62,6 @@ namespace InstanciumLens.App
             builder.Services.AddTransient<IFolderManifestService, LocalFolderManifestService>();
             builder.Services.AddTransient<IGraphRagManager, GraphRagManager>();
             builder.Services.AddSingleton<IGraphRepositoryFactory, SqLiteGraphRepositoryFactory>();
-            
-            // [AI DIFF]: register WBS stage 5 decision engine services
             builder.Services.AddSingleton<IGraphValidationPipeline, GraphValidationPipeline>();
             builder.Services.AddSingleton<IDecisionEngine, DecisionEngine>();
 
