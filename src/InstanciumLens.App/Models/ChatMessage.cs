@@ -21,5 +21,8 @@ namespace InstanciumLens.App.Models
         /// Useful for UI loading indicators or blinking cursors.
         /// </summary>
         public bool IsStreaming { get; set; } = false;
+
+        /// <summary>Facts cited by the assistant message, rendered as footnotes.</summary>
+        public List<InstanciumLens.Core.Models.CitationFact> Citations { get; set; } = new();
     }
 }

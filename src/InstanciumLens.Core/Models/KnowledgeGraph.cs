@@ -19,6 +19,9 @@ namespace InstanciumLens.Core.Models
 
         // References to document nodes where this entity was found (for UI proofing)
         public List<string> SourceDocumentNodeIds { get; set; } = new();
+
+        /// <summary>Model self-reported extraction reliability in range [0..1]; default 1.0 keeps legacy graphs valid.</summary>
+        public double ConfidenceScore { get; set; } = 1.0;
     }
 
     public class GraphRelationship

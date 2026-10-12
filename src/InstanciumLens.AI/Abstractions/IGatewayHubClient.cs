@@ -29,13 +29,16 @@ namespace InstanciumLens.AI.Abstractions
         /// <summary>Opens the underlying connection if it is not already open.</summary>
         Task EnsureConnectedAsync(CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Full request/completion cycle: Join, optional ephemeral mark, sequential SendPromptDelta,
-        /// stream collection until IsDone, single retry with re-Join on session eviction,
-        /// best-effort DestroySession in all exit paths.
-        /// </summary>
-        /// <returns>Accumulated assistant content of the final prompt in the sequence.</returns>
+        /// <summary>Full request/completion cycle returning the accumulated assistant content.</summary>
         Task<string> RunCompletionAsync(
+            string sessionId,
+            string repoId,
+            IReadOnlyList<GatewayChatMessage> messages,
+            bool ephemeral,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>Same lifecycle as RunCompletionAsync but yields tokens as they arrive.</summary>
+        IAsyncEnumerable<string> RunCompletionStreamAsync(
             string sessionId,
             string repoId,
             IReadOnlyList<GatewayChatMessage> messages,

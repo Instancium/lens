@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Runtime.CompilerServices;
+using System.Text.Json;
 using InstanciumLens.AI.Abstractions;
 using InstanciumLens.AI.Configuration;
 using InstanciumLens.AI.Contracts;
@@ -9,8 +10,8 @@ namespace InstanciumLens.AI.Services
 {
     /// <summary>
     /// ILocalModelService implementation backed by InstantAIGate sessions.
-    /// Replaces the retired standalone llama.cpp pipeline; every call owns an ephemeral session
-    /// that is destroyed in all exit paths to keep VRAM discipline on the gateway.
+    /// Every call owns an ephemeral session; destruction is guaranteed by the hub client core
+    /// in all exit paths, so no double-destroy happens here.
     /// </summary>
     public sealed class GatewayAiService : ILocalModelService
     {
@@ -37,27 +38,7 @@ namespace InstanciumLens.AI.Services
                 $"Text to analyze: {document.RawText}",
                 cancellationToken);
 
-            string rawJson = CleanLlmJsonOutput(response);
-            try
-            {
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var graphSegment = JsonSerializer.Deserialize<KnowledgeGraph>(rawJson, options);
-                if (graphSegment != null)
-                {
-                    foreach (var entity in graphSegment.Entities)
-                    {
-                        entity.SourceDocumentNodeIds.Add(document.Id);
-                    }
-
-                    return graphSegment;
-                }
-            }
-            catch (JsonException)
-            {
-                // Malformed model output degrades to an empty segment, not to a crash.
-            }
-
-            return new KnowledgeGraph();
+            return ParseGraphSegment(response, document);
         }
 
         /// <inheritdoc/>
@@ -68,10 +49,29 @@ namespace InstanciumLens.AI.Services
         {
             if (contextGraph == null) throw new ArgumentNullException(nameof(contextGraph));
 
-            return CompleteAsync(
-                BuildAnswerSystemPrompt(contextGraph),
-                userQuery,
-                cancellationToken);
+            return CompleteAsync(BuildGraphAnswerSystemPrompt(contextGraph), userQuery, cancellationToken);
+        }
+
+        /// <inheritdoc/>
+        public async IAsyncEnumerable<string> AnswerQueryStreamAsync(
+            string userQuery,
+            CitationContext citationContext,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            if (citationContext == null) throw new ArgumentNullException(nameof(citationContext));
+
+            string sessionId = "lens-chat-" + Guid.NewGuid().ToString("N");
+            var messages = new List<GatewayChatMessage>
+            {
+                GatewayChatMessage.System(BuildCitationAnswerSystemPrompt(citationContext)),
+                GatewayChatMessage.User(userQuery)
+            };
+
+            await foreach (var token in _gateway.RunCompletionStreamAsync(
+                sessionId, _settings.ActiveRepoId, messages, ephemeral: true, cancellationToken))
+            {
+                yield return token;
+            }
         }
 
         /// <inheritdoc/>
@@ -79,10 +79,7 @@ namespace InstanciumLens.AI.Services
             string userIntent,
             CancellationToken cancellationToken = default)
         {
-            string response = await CompleteAsync(
-                BuildOntologySystemPrompt(),
-                userIntent,
-                cancellationToken);
+            string response = await CompleteAsync(BuildOntologySystemPrompt(), userIntent, cancellationToken);
 
             string rawJson = CleanLlmJsonOutput(response);
             try
@@ -128,7 +125,7 @@ namespace InstanciumLens.AI.Services
             return (fallbackProfile, "{}");
         }
 
-        private async Task<string> CompleteAsync(string systemPrompt, string userPrompt, CancellationToken cancellationToken)
+        private Task<string> CompleteAsync(string systemPrompt, string userPrompt, CancellationToken cancellationToken)
         {
             string sessionId = "lens-" + Guid.NewGuid().ToString("N");
             var messages = new List<GatewayChatMessage>
@@ -137,34 +134,55 @@ namespace InstanciumLens.AI.Services
                 GatewayChatMessage.User(userPrompt)
             };
 
+            return _gateway.RunCompletionAsync(sessionId, _settings.ActiveRepoId, messages, ephemeral: true, cancellationToken);
+        }
+
+        private KnowledgeGraph ParseGraphSegment(string response, DocumentNode document)
+        {
+            string rawJson = CleanLlmJsonOutput(response);
             try
             {
-                return await _gateway.RunCompletionAsync(
-                    sessionId,
-                    _settings.ActiveRepoId,
-                    messages,
-                    ephemeral: true,
-                    cancellationToken);
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var graphSegment = JsonSerializer.Deserialize<KnowledgeGraph>(rawJson, options);
+                if (graphSegment != null)
+                {
+                    foreach (var entity in graphSegment.Entities)
+                    {
+                        entity.SourceDocumentNodeIds.Add(document.Id);
+                    }
+
+                    return graphSegment;
+                }
             }
-            finally
+            catch (JsonException)
             {
-                await _gateway.DestroySessionAsync(sessionId);
+                // Malformed model output degrades to an empty segment, not to a crash.
             }
+
+            return new KnowledgeGraph();
         }
 
         private static string BuildExtractionSystemPrompt(string ontologySchemaJson) =>
             "You are a precise data extraction AI. Extract entities and relationships from the text " +
             $"based on this JSON ontology schema:\n{ontologySchemaJson}\n" +
             "Return strictly valid JSON matching the schema with 'Entities' and 'Relationships' arrays. " +
+            "Every entity and every relationship MUST include a numeric 'ConfidenceScore' field in range 0.0..1.0 " +
+            "expressing how certain you are that the fact is present in the text. " +
             "Do not add markdown formatting, conversational filler, or explanations.";
 
-        private static string BuildAnswerSystemPrompt(KnowledgeGraph context)
+        private static string BuildGraphAnswerSystemPrompt(KnowledgeGraph context)
         {
             string contextJson = JsonSerializer.Serialize(context);
             return "You are an expert analytical assistant. Answer the user's question using ONLY the provided " +
-                   $"Knowledge Graph context below. If the answer is not contained in the context, explicitly state " +
+                   "Knowledge Graph context below. If the answer is not contained in the context, explicitly state " +
                    $"that you do not have enough information.\nContext: {contextJson}";
         }
+
+        private static string BuildCitationAnswerSystemPrompt(CitationContext context) =>
+            "You are an expert analytical assistant. Answer using ONLY the numbered facts below. " +
+            "Immediately after every claim derived from fact [n], place the marker [n] inline with no space. " +
+            "If the facts are insufficient, explicitly state that you do not have enough information. " +
+            $"Numbered facts:\n{context.PromptText}";
 
         private static string BuildOntologySystemPrompt() =>
             "You are an expert data architect and ontology engineer. Your task is to analyze the user's intent " +

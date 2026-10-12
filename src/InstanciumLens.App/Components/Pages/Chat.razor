@@ -1,0 +1,221 @@
+﻿@page "/chat/{ProfileId}"
+@using System.Text.Json
+@using InstanciumLens.Core.Models
+@inject InstanciumLens.Core.Interfaces.IAppStateService AppState
+@inject InstanciumLens.Core.Interfaces.IGraphRepositoryFactory RepoFactory
+@inject InstanciumLens.Core.Interfaces.ILocalModelService AiService
+@using InstanciumLens.App.Components.Shared
+@inject IJSRuntime JS
+
+<div class="chat-page">
+    <header class="chat-header">
+        <h1 class="chat-header__title">@(_profile?.DisplayName ?? "AI Chat")</h1>
+        <span class="chat-header__subtitle">@(_profile?.Description ?? string.Empty)</span>
+    </header>
+
+    @if (_loadError != null)
+    {
+        <div class="chat-error">@_loadError</div>
+    }
+    else
+    {
+        <div class="chat-scroll" id="chat-scroll">
+            @if (_messages.Count == 0)
+            {
+                <div class="chat-empty">Ask anything about the indexed documents. Answers are grounded in the knowledge graph of this profile and carry numbered source footnotes.</div>
+            }
+            @foreach (var message in _messages)
+            {
+                <div class="chat-message chat-message--@(message.Role.ToLower())">
+                    <div class="chat-message__role">@(message.Role == "user" ? "You" : "Lens")</div>
+                    <div class="markdown-body">@message.Content@(message.IsStreaming ? "▍" : string.Empty)</div>
+                    @if (message.Role == "assistant" && message.Citations.Count > 0)
+                    {
+                        <div class="chat-footnotes">
+                            @foreach (var fact in message.Citations)
+                            {
+                                <button class="chat-footnote" @onclick="() => OpenDrawerAsync(fact)" title="@fact.Label">
+                                    <span class="chat-footnote__index">[@fact.Index]</span>
+                                    <span class="chat-footnote__label">@fact.Label</span>
+                                    <span class="chat-footnote__confidence">@fact.ConfidenceScore:P0</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="chat-input-bar">
+            <textarea class="chat-input"
+                      rows="3"
+                      placeholder="Ask about the documents... (Ctrl+Enter to send)"
+                      @bind="_userInput"
+                      @onkeydown="HandleKeyDown"></textarea>
+            <button class="chat-send"
+                    disabled="@(_isProcessing || string.IsNullOrWhiteSpace(_userInput))"
+                    @onclick="SendAsync">Send</button>
+        </div>
+    }
+
+    <SourceDrawer Visible="_drawerVisible" Fact="_drawerFact" OnCloseClick="CloseDrawerAsync"></SourceDrawer>
+</div>
+
+@code {
+    /// <summary>Profile identifier routed from the sidebar card click.</summary>
+    [Parameter]
+    public string ProfileId { get; set; } = string.Empty;
+
+    private readonly List<InstanciumLens.App.Models.ChatMessage> _messages = new();
+    private readonly HashSet<string> _stopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "what", "which", "where", "when", "does", "done", "this", "that", "with", "from", "have", "has",
+        "the", "and", "for", "are", "was", "were",
+        "что", "какой", "какая", "какие", "каких", "каком", "каким", "где", "когда", "этом", "этой", "этого",
+        "или", "как", "были", "было", "есть", "ли", "по", "на", "во"
+    };
+
+    private GraphProfile? _profile;
+    private string? _loadError;
+    private string _userInput = string.Empty;
+    private bool _isProcessing;
+    private bool _drawerVisible;
+    private CitationFact? _drawerFact;
+
+    /// <summary>Resolves the target profile from the folder manifest before first render.</summary>
+    protected override async Task OnInitializedAsync()
+    {
+        string? folder = AppState.CurrentFolderPath;
+        if (string.IsNullOrEmpty(folder))
+        {
+            _loadError = "No folder selected. Return to the home page and pick a documents folder first.";
+            return;
+        }
+
+        try
+        {
+            string manifestPath = System.IO.Path.Combine(folder, ".instancium", "manifest.json");
+            if (!System.IO.File.Exists(manifestPath))
+            {
+                _loadError = "manifest.json not found in the selected folder. Create a profile via Smart Interview.";
+                return;
+            }
+
+            string json = await System.IO.File.ReadAllTextAsync(manifestPath);
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var manifest = JsonSerializer.Deserialize<FolderManifest>(json, options);
+            _profile = manifest?.Profiles.FirstOrDefault(p => p.Id == ProfileId);
+            if (_profile == null)
+            {
+                _loadError = $"Profile '{ProfileId}' was not found in the manifest of the selected folder.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _loadError = $"Failed to read manifest: {ex.Message}";
+        }
+    }
+
+    /// <summary>Sends the query, retrieves the relevant subgraph and streams the grounded answer.</summary>
+    private async Task SendAsync()
+    {
+        if (_isProcessing || string.IsNullOrWhiteSpace(_userInput) || _profile == null)
+        {
+            return;
+        }
+
+        string query = _userInput;
+        _userInput = string.Empty;
+        _isProcessing = true;
+        _messages.Add(new InstanciumLens.App.Models.ChatMessage { Role = "user", Content = query });
+
+        var assistant = new InstanciumLens.App.Models.ChatMessage
+        {
+            Role = "assistant",
+            Content = string.Empty,
+            IsStreaming = true
+        };
+        _messages.Add(assistant);
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            string folder = AppState.CurrentFolderPath!;
+            var repository = RepoFactory.CreateRepository(folder, _profile.Id);
+            var keywords = ExtractKeywords(query);
+
+            KnowledgeGraph context = keywords.Count > 0
+                ? await repository.GetRelevantSubGraphAsync(keywords)
+                : new KnowledgeGraph();
+
+            var citationContext = CitationContextBuilder.Build(context, 10);
+
+            if (citationContext.Facts.Count == 0)
+            {
+                assistant.Content = "The knowledge graph does not contain facts related to this question yet. " +
+                                    "Run the analysis on the Engine page or rephrase the question.";
+            }
+            else
+            {
+                await foreach (var token in AiService.AnswerQueryStreamAsync(query, citationContext))
+                {
+                    assistant.Content += token;
+                    await InvokeAsync(StateHasChanged);
+                    _ = JS.InvokeVoidAsync("scrollChatToBottom", "chat-scroll");
+                }
+
+                // Footnotes render only for facts the model actually cited.
+                assistant.Citations.AddRange(
+                    citationContext.Facts.Where(f => assistant.Content.Contains($"[{f.Index}]")));
+            }
+        }
+        catch (Exception ex)
+        {
+            assistant.Content += $"\n[Error] {ex.Message}";
+        }
+        finally
+        {
+            assistant.IsStreaming = false;
+            _isProcessing = false;
+            await InvokeAsync(StateHasChanged);
+            await JS.InvokeVoidAsync("scrollChatToBottom", "chat-scroll");
+        }
+    }
+
+    /// <summary>Opens the source drawer for the selected footnote fact.</summary>
+    private Task OpenDrawerAsync(CitationFact fact)
+    {
+        _drawerFact = fact;
+        _drawerVisible = true;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Hides the source drawer.</summary>
+    private Task CloseDrawerAsync()
+    {
+        _drawerVisible = false;
+        _drawerFact = null;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Submits the query on Ctrl+Enter.</summary>
+    private async Task HandleKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && e.CtrlKey)
+        {
+            await SendAsync();
+        }
+    }
+
+    /// <summary>Extracts search keywords from the query, dropping short tokens and stopwords.</summary>
+    private List<string> ExtractKeywords(string query)
+    {
+        return query
+            .Split(new[] { ' ', ',', '.', '!', '?', ';', ':', '(', ')', '"', '\'', '\n', '\t', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => t.Length >= 4)
+            .Where(t => !_stopWords.Contains(t))
+            .Distinct()
+            .Take(12)
+            .ToList();
+    }
+}
