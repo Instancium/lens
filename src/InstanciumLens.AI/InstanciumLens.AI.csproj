@@ -7,16 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="Native\x64\libomp.dll" />
+    <PackageReference Include="InstantAIGate.Core" Version="1.2.1" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.12" />
   </ItemGroup>
-	
-	<ItemGroup>
-		<!-- Copies strictly the required native inference and Vulkan/CPU backend libraries -->
-		<None Update="Native\x64\*.dll">
-			<Link>%(Filename)%(Extension)</Link>
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</None>
-	</ItemGroup>
 	
   <ItemGroup>
     <ProjectReference Include="..\InstanciumLens.Core\InstanciumLens.Core.csproj" />
