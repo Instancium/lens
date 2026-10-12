@@ -62,6 +62,10 @@ namespace InstanciumLens.App
             builder.Services.AddTransient<IFolderManifestService, LocalFolderManifestService>();
             builder.Services.AddTransient<IGraphRagManager, GraphRagManager>();
             builder.Services.AddSingleton<IGraphRepositoryFactory, SqLiteGraphRepositoryFactory>();
+            
+            // [AI DIFF]: register WBS stage 5 decision engine services
+            builder.Services.AddSingleton<IGraphValidationPipeline, GraphValidationPipeline>();
+            builder.Services.AddSingleton<IDecisionEngine, DecisionEngine>();
 
             return builder.Build();
         }

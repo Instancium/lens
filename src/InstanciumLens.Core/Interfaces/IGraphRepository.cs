@@ -28,5 +28,8 @@ namespace InstanciumLens.Core.Interfaces
         /// <param name="cancellationToken">Token to cancel the search operation.</param>
         /// <returns>A focused sub-graph containing only relevant nodes and edges.</returns>
         Task<KnowledgeGraph> GetRelevantSubGraphAsync(IEnumerable<string> keywords, CancellationToken cancellationToken = default);
+
+        // [AI DIFF]: applies explicit graph mutations for master or sandbox branch
+        Task SaveChangesAsync(GraphChange change, CancellationToken cancellationToken = default);
     }
 }
