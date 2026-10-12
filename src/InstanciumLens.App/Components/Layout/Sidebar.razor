@@ -1,95 +1,117 @@
-﻿@using System.IO
-@using System.Reflection
-@using System.Text.Json
-@using InstanciumLens.AI.Abstractions
+﻿@* Components/Layout/Sidebar.razor *@
 @using InstanciumLens.AI.Configuration
 @using InstanciumLens.AI.Contracts
 @using InstanciumLens.AI.Services
 @using InstanciumLens.Core.Interfaces
 @using InstanciumLens.Core.Models
-@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.Maui.Storage
+@using System.Reflection
+@using System.Text.Json
+@inject GatewayConnectionService ConnectionService
+@inject GatewaySettings GatewaySettings
 @inject NavigationManager NavManager
 @inject IAppStateService AppState
-@inject IGatewayHubClient Gateway
-@inject GatewaySessionManager SessionManager
-@inject GatewaySettings GatewaySettings
 @implements IDisposable
 
-<aside class="sidebar @(IsCollapsed ? "sidebar--collapsed" : string.Empty)">
-    <header class="sidebar__header">
+<div class="sidebar @(IsCollapsed ? "sidebar--collapsed" : "")">
+    <div class="sidebar__header">
         <div class="sidebar__logo">
-            <svg class="sidebar__logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="5" cy="6" r="2.5"></circle>
-                <circle cx="19" cy="6" r="2.5"></circle>
-                <circle cx="12" cy="18" r="2.5"></circle>
-                <path d="M7.5 6h9"></path>
-                <path d="M6.2 8.2l4.6 7.6"></path>
-                <path d="M17.8 8.2l-4.6 7.6"></path>
-            </svg>
-            <span class="sidebar__title">Instancium Lens</span>
+            <span class="sidebar__logo-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="18" r="3"></circle>
+                    <circle cx="6" cy="6" r="3"></circle>
+                    <circle cx="18" cy="6" r="3"></circle>
+                    <path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"></path>
+                    <path d="M12 12v3"></path>
+                </svg>
+            </span>
+            @if (!IsCollapsed)
+            {
+                <span class="sidebar__title">Instancium Lens</span>
+            }
         </div>
-        <button class="sidebar__toggle" @onclick="ToggleCollapseAsync" title="@(IsCollapsed ? "Expand sidebar" : "Collapse sidebar")" aria-label="Toggle sidebar">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                @if (IsCollapsed)
-                {
+        <button type="button" class="sidebar__toggle" @onclick="ToggleCollapseAsync" title="Toggle sidebar">
+            @if (IsCollapsed)
+            {
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="13 17 18 12 13 7"></polyline>
                     <polyline points="6 17 11 12 6 7"></polyline>
-                }
-                else
-                {
+                </svg>
+            }
+            else
+            {
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="11 17 6 12 11 7"></polyline>
                     <polyline points="18 17 13 12 18 7"></polyline>
-                }
-            </svg>
+                </svg>
+            }
         </button>
-    </header>
+    </div>
 
     <div class="sidebar__content">
-        <section class="sidebar__nav">
-            <p class="sidebar__section-title">Navigation</p>
-            <button class="@GetNavClass("/")" @onclick='() => NavigateTo("/")'>
-                <svg class="sidebar__menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
-                </svg>
-                <span>Home</span>
-            </button>
-            <button class="@GetNavClass("/smart-interview")" @onclick='() => NavigateTo("/smart-interview")'>
-                <svg class="sidebar__menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                </svg>
-                <span>Smart Interview</span>
-            </button>
-            <button class="@GetNavClass("/engine")" @onclick='() => NavigateTo("/engine")'>
-                <svg class="sidebar__menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <rect x="4" y="4" width="16" height="16" rx="2"></rect>
-                    <rect x="9" y="9" width="6" height="6"></rect>
-                    <path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"></path>
-                </svg>
-                <span>Engine</span>
-            </button>
-        </section>
+        <nav class="sidebar__nav">
+            <div class="sidebar__section-title">Navigation</div>
+            <a class="@GetNavClass("/")" @onclick="NavigateHome">
+                <span class="sidebar__menu-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                        <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                    </svg>
+                </span>
+                @if (!IsCollapsed)
+                {
+                    <span>Home</span>
+                }
+            </a>
+            <a class="@GetNavClass("/smart-interview")" @onclick="NavigateSmartInterview">
+                <span class="sidebar__menu-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                </span>
+                @if (!IsCollapsed)
+                {
+                    <span>Smart Interview</span>
+                }
+            </a>
+            <a class="@GetNavClass("/engine")" @onclick="NavigateEngine">
+                <span class="sidebar__menu-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+                        <rect x="9" y="9" width="6" height="6"></rect>
+                        <path d="M9 1v3"></path>
+                        <path d="M15 1v3"></path>
+                        <path d="M9 20v3"></path>
+                        <path d="M15 20v3"></path>
+                        <path d="M1 9h3"></path>
+                        <path d="M1 15h3"></path>
+                        <path d="M20 9h3"></path>
+                        <path d="M20 15h3"></path>
+                    </svg>
+                </span>
+                @if (!IsCollapsed)
+                {
+                    <span>Engine</span>
+                }
+            </a>
+        </nav>
 
-        <section class="sidebar__profiles">
-            <p class="sidebar__section-title">Graph Profiles</p>
+        <div class="sidebar__profiles">
+            <div class="sidebar__section-title">Graph Profiles</div>
             @if (profiles.Count == 0)
             {
                 <div class="sidebar__empty">
                     <p>No graph profiles yet.</p>
-                    <p class="sidebar__hint">
-                        @(string.IsNullOrEmpty(AppState.CurrentFolderPath)
-                            ? "Select a documents folder on the Home page."
-                            : "Run Smart Interview to create the first profile.")
-                    </p>
+                    <p class="sidebar__hint">Run Smart Interview to create the first profile.</p>
                 </div>
             }
             else
             {
                 @foreach (var profile in profiles)
                 {
-                    <button class="profile-card" @onclick="() => OpenProfile(profile)" title="@profile.DisplayName">
-                        <span class="profile-card__icon" aria-hidden="true">@profile.Icon</span>
+                    <button type="button" class="profile-card" @onclick="() => OpenProfile(profile)">
+                        <span class="profile-card__icon">@profile.Icon</span>
                         <span class="profile-card__body">
                             <span class="profile-card__name">@profile.DisplayName</span>
                             <span class="profile-card__desc">@profile.Description</span>
@@ -98,116 +120,111 @@
                     </button>
                 }
             }
-        </section>
+        </div>
 
-        <section class="sidebar__status">
-            <p class="sidebar__section-title">System Status</p>
-            <div class="system-status">
-                <div class="system-status__item">
-                    <div class="system-status__icon @GetStatusIconClass()">
-                        @if (IsGatewayBusy())
-                        {
-                            <svg class="spin-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <line x1="12" y1="2" x2="12" y2="6"></line>
-                                <line x1="12" y1="18" x2="12" y2="22"></line>
-                                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
-                                <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
-                                <line x1="2" y1="12" x2="6" y2="12"></line>
-                                <line x1="18" y1="12" x2="22" y2="12"></line>
-                                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
-                                <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
-                            </svg>
-                        }
-                        else if (CurrentStatus?.Status == GatewayOperationalStatus.Ready)
-                        {
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <div class="sidebar__section-title">System Status</div>
+        <div class="system-status">
+            <div class="system-status__item">
+                <div class="@GetStatusIconClass()">
+                    @switch (GetStatusKind())
+                    {
+                        case "ready":
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                                 <polyline points="22 4 12 14.01 9 11.01"></polyline>
                             </svg>
-                        }
-                        else if (CurrentStatus?.Status == GatewayOperationalStatus.Faulted)
-                        {
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-                                <line x1="12" y1="9" x2="12" y2="13"></line>
-                                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                            break;
+                        case "downloading":
+                            <svg class="spin-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
                             </svg>
-                        }
-                        else
-                        {
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            break;
+                        case "error":
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="8" x2="12" y2="12"></line>
+                                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                            </svg>
+                            break;
+                        default:
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <circle cx="12" cy="12" r="10"></circle>
                                 <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
                             </svg>
-                        }
-                    </div>
-                    <div class="system-status__info">
-                        <span class="system-status__label">@GetStatusText()</span>
-                        <span class="system-status__value">@GetStatusValue()</span>
-                    </div>
+                            break;
+                    }
                 </div>
-                @if (ShowDownloadProgress())
-                {
-                    <div class="system-status__progress-bar">
-                        <div class="system-status__progress-fill" style="width: @(GetDownloadPercent().ToString("F0"))%"></div>
-                    </div>
-                }
+                <div class="system-status__info">
+                    <span class="system-status__label">@GetStatusText()</span>
+                    <span class="system-status__value">@GetStatusValue()</span>
+                </div>
             </div>
-        </section>
+            @if (ShowDownloadProgress())
+            {
+                <div class="system-status__progress-bar">
+                    <div class="system-status__progress-fill" style="width: @(GetDownloadPercent())%"></div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="sidebar__footer">
+        <button type="button" class="sidebar__menu-item" @onclick="ToggleSettings">
+            <span class="sidebar__menu-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+            </span>
+            @if (!IsCollapsed)
+            {
+                <span>Settings</span>
+            }
+        </button>
+        @if (!IsCollapsed)
+        {
+            <div class="sidebar__version">v@(AppVersion)</div>
+        }
     </div>
 
     @if (showSettings)
     {
         <div class="sidebar__settings">
-            <label class="sidebar__settings-label" for="settings-base-url">Gateway URL</label>
-            <input id="settings-base-url" class="sidebar__settings-input" @bind="settingsBaseUrl" placeholder="http://localhost:5000" />
-            <label class="sidebar__settings-label" for="settings-api-key">API Key</label>
-            <input id="settings-api-key" class="sidebar__settings-input" type="password" @bind="settingsApiKey" placeholder="Access token" />
-            <label class="sidebar__settings-label" for="settings-repo-id">Active Model</label>
-            <input id="settings-repo-id" class="sidebar__settings-input" @bind="settingsRepoId" placeholder="Empty = gateway active model" />
-            <button class="sidebar__settings-save" @onclick="SaveSettingsAsync">Save Settings</button>
-            <p class="sidebar__hint">@SettingsHint</p>
+            <span class="sidebar__settings-label">Gateway Settings</span>
+            <label class="sidebar__settings-label">Base URL</label>
+            <input class="sidebar__settings-input" @bind="settingsBaseUrl" placeholder="http://localhost:5000" />
+            <label class="sidebar__settings-label">API Key</label>
+            <input class="sidebar__settings-input" @bind="settingsApiKey" type="password" placeholder="Enter API key" />
+            <label class="sidebar__settings-label">Active Model (RepoId)</label>
+            <input class="sidebar__settings-input" @bind="settingsRepoId" placeholder="qwen3-vl-8b-instruct" />
+            <button type="button" class="sidebar__settings-save" @onclick="SaveSettingsAsync">Save</button>
+            @if (settingsSaved)
+            {
+                <span class="sidebar__hint">@SettingsHint</span>
+            }
         </div>
     }
+</div>
 
-    <footer class="sidebar__footer">
-        <button class="sidebar__menu-item" @onclick="ToggleSettings" title="Settings">
-            <svg class="sidebar__menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="3"></circle>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-            </svg>
-            <span>Settings</span>
-        </button>
-        <div class="sidebar__version">v@(AppVersion)</div>
-    </footer>
-</aside>
-
-@code
-{
+@code {
     private const string BaseUrlPreferenceKey = "GatewayBaseUrl";
     private const string ApiKeyPreferenceKey = "GatewayApiKey";
     private const string RepoIdPreferenceKey = "GatewayActiveRepoId";
 
-    /// <summary>Collapses the sidebar to the narrow strip; controlled by the parent layout.</summary>
     [Parameter]
     public bool IsCollapsed { get; set; }
 
-    /// <summary>Notifies the parent layout that the collapse state has changed.</summary>
     [Parameter]
     public EventCallback<bool> IsCollapsedChanged { get; set; }
 
     private readonly List<GraphProfile> profiles = new();
-    private bool _subscribed;
     private bool showSettings;
     private bool settingsSaved;
     private string settingsBaseUrl = string.Empty;
     private string settingsApiKey = string.Empty;
     private string settingsRepoId = string.Empty;
-    private ModelDownloadProgress? _downloadProgress;
+    private bool _initialized;
 
-    // Reads <Version>1.0.2</Version> from the csproj via AssemblyVersion.
-    // AssemblyInformationalVersion in MAUI Blazor Hybrid reflects ApplicationDisplayVersion (1.0),
-    // which is a different MSBuild property — not what we want in the footer.
     private static string AppVersion { get; } = ResolveAppVersion();
 
     private static string ResolveAppVersion()
@@ -217,13 +234,11 @@
         {
             return "1.0.0";
         }
-        // Drop the build/revision segment if it is the default zero.
+
         return version.Revision > 0
             ? version.ToString()
             : $"{version.Major}.{version.Minor}.{version.Build}";
     }
-
-    private GatewayStatusDetails? CurrentStatus => Gateway.LastStatus;
 
     private string SettingsHint => settingsSaved
         ? "Settings saved. Restart the app to reconnect the gateway."
@@ -231,62 +246,37 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && !_subscribed)
+        if (firstRender && !_initialized)
         {
-            _subscribed = true;
-            SessionManager.OnStatusChanged += HandleStatusChanged;
-            Gateway.GatewayStatusReceived += HandleGatewayStatus;
-            Gateway.DownloadProgressReceived += HandleDownloadProgress;
+            _initialized = true;
+            ConnectionService.StateChanged += HandleConnectionStateChanged;
             NavManager.LocationChanged += OnLocationChanged;
+
             settingsBaseUrl = GatewaySettings.BaseUrl;
             settingsApiKey = GatewaySettings.ApiKey;
             settingsRepoId = GatewaySettings.ActiveRepoId;
-            try
-            {
-                await SessionManager.InitializeAsync();
-            }
-            catch
-            {
-                // Connection failures are surfaced through the System Status block; rendering must not crash.
-            }
+
+            await ConnectionService.StartAsync();
             await LoadProfilesAsync();
             await InvokeAsync(StateHasChanged);
         }
+
         await base.OnAfterRenderAsync(firstRender);
     }
 
-    /// <summary>Unsubscribes from all external event sources to prevent leaked component references.</summary>
     public void Dispose()
     {
-        SessionManager.OnStatusChanged -= HandleStatusChanged;
-        Gateway.GatewayStatusReceived -= HandleGatewayStatus;
-        Gateway.DownloadProgressReceived -= HandleDownloadProgress;
+        ConnectionService.StateChanged -= HandleConnectionStateChanged;
         NavManager.LocationChanged -= OnLocationChanged;
     }
 
-    private void HandleStatusChanged()
+    private void HandleConnectionStateChanged()
     {
-        InvokeAsync(StateHasChanged);
-    }
-
-    private void HandleGatewayStatus(GatewayStatusDetails status)
-    {
-        if (status.Status == GatewayOperationalStatus.Ready)
-        {
-            _downloadProgress = null;
-        }
-        _ = InvokeAsync(StateHasChanged);
-    }
-
-    private void HandleDownloadProgress(ModelDownloadProgress progress)
-    {
-        _downloadProgress = progress;
         _ = InvokeAsync(StateHasChanged);
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
-        // Profiles appear right after Smart Interview saves the manifest, without a manual refresh.
         _ = InvokeAsync(LoadProfilesAsync);
     }
 
@@ -315,6 +305,7 @@
                 Console.WriteLine($"Sidebar manifest read failed: {ex.Message}");
             }
         }
+
         await InvokeAsync(StateHasChanged);
     }
 
@@ -348,9 +339,19 @@
         return InvokeAsync(StateHasChanged);
     }
 
-    private void NavigateTo(string uri)
+    private void NavigateHome()
     {
-        NavManager.NavigateTo(uri);
+        NavManager.NavigateTo("/");
+    }
+
+    private void NavigateSmartInterview()
+    {
+        NavManager.NavigateTo("/smart-interview");
+    }
+
+    private void NavigateEngine()
+    {
+        NavManager.NavigateTo("/engine");
     }
 
     private void OpenProfile(GraphProfile profile)
@@ -373,36 +374,44 @@
         return profile.DocumentCount > 0 ? $"{date} · {profile.DocumentCount} docs" : date;
     }
 
-    private bool IsGatewayBusy()
+    private string GetStatusKind()
     {
-        var status = CurrentStatus;
-        return status != null &&
-            (status.Status == GatewayOperationalStatus.ModelDownloading ||
-             status.Status == GatewayOperationalStatus.ModelLoading);
+        GatewayStatusDetails? status = ConnectionService.LastStatus;
+        if (status == null)
+        {
+            return ConnectionService.ConnectionState == HubConnectionState.Connected ? "ready" : "offline";
+        }
+
+        return status.Status switch
+        {
+            GatewayOperationalStatus.Ready => "ready",
+            GatewayOperationalStatus.Faulted => "error",
+            GatewayOperationalStatus.Uninitialized => "offline",
+            _ => "downloading"
+        };
     }
 
     private string GetStatusIconClass()
     {
-        var status = CurrentStatus;
-        if (status == null)
+        return GetStatusKind() switch
         {
-            return "system-status__icon--offline";
-        }
-        return status.Status switch
-        {
-            GatewayOperationalStatus.Ready => "system-status__icon--ready",
-            GatewayOperationalStatus.Faulted => "system-status__icon--error",
-            _ => "system-status__icon--downloading"
+            "ready" => "system-status__icon system-status__icon--ready",
+            "error" => "system-status__icon system-status__icon--error",
+            "downloading" => "system-status__icon system-status__icon--downloading",
+            _ => "system-status__icon system-status__icon--offline"
         };
     }
 
     private string GetStatusText()
     {
-        var status = CurrentStatus;
+        GatewayStatusDetails? status = ConnectionService.LastStatus;
         if (status == null)
         {
-            return SessionManager.IsConnected ? "Gateway Connected" : "Gateway Offline";
+            return ConnectionService.ConnectionState == HubConnectionState.Connected
+                ? "Gateway Connected"
+                : "Gateway Offline";
         }
+
         return status.Status switch
         {
             GatewayOperationalStatus.Ready => "Model Ready",
@@ -415,41 +424,46 @@
 
     private string GetStatusValue()
     {
-        var status = CurrentStatus;
+        GatewayStatusDetails? status = ConnectionService.LastStatus;
         if (status == null)
         {
-            return "Waiting for gateway telemetry...";
+            if (ConnectionService.ConnectionState == HubConnectionState.Connected)
+            {
+                return "Waiting for gateway telemetry...";
+            }
+
+            return ConnectionService.LastError ?? "Connecting...";
         }
+
         if (status.Status == GatewayOperationalStatus.Ready)
         {
             return status.ActiveModelId ?? "Active model loaded";
         }
+
         if (status.Status == GatewayOperationalStatus.Faulted)
         {
             return status.ErrorMessage ?? "Gateway reported a fault.";
         }
+
         if (status.Status == GatewayOperationalStatus.ModelDownloading)
         {
             return $"{GetDownloadPercent():F0}% · {status.StageDescription ?? "downloading weights"}";
         }
+
         return status.StageDescription ?? string.Empty;
     }
 
     private double GetDownloadPercent()
     {
-        if (_downloadProgress != null)
-        {
-            return _downloadProgress.Percentage;
-        }
-        return CurrentStatus?.ProgressPercentage ?? 0;
+        return ConnectionService.LastStatus?.ProgressPercentage ?? 0;
     }
 
     private bool ShowDownloadProgress()
     {
-        var status = CurrentStatus;
-        return status != null &&
-            status.Status == GatewayOperationalStatus.ModelDownloading &&
-            GetDownloadPercent() < 100;
+        GatewayStatusDetails? status = ConnectionService.LastStatus;
+        return status != null
+            && (status.Status == GatewayOperationalStatus.ModelDownloading
+                || status.Status == GatewayOperationalStatus.ModelLoading)
+            && GetDownloadPercent() < 100;
     }
-
 }

@@ -1,4 +1,5 @@
-﻿using InstanciumLens.AI.Abstractions;
+﻿// src/InstanciumLens.AI/Services/GatewayHubClient.cs
+using InstanciumLens.AI.Abstractions;
 using InstanciumLens.AI.Contracts;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -10,50 +11,45 @@ using System.Threading.Channels;
 namespace InstanciumLens.AI.Services
 {
     /// <summary>
-    /// SignalR implementation of the gateway facade. Owns pending stream completions,
-    /// routes server callbacks and enforces the ephemeral-session discipline from the wire contract.
-    /// Supports both batch completion (Task) and live token streaming (IAsyncEnumerable).
+    /// SignalR-based gateway client: session joins, streaming completion deltas and
+    /// telemetry forwarding. Connection lifecycle is delegated to GatewayConnectionService.
     /// </summary>
     public sealed class GatewayHubClient : IGatewayHubClient
     {
         private readonly HubConnection _connection;
+        private readonly GatewayConnectionService _connectionService;
         private readonly ConcurrentDictionary<string, PendingRequest> _pending = new();
-        private readonly SemaphoreSlim _connectLock = new(1, 1);
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public event Action<GatewayStatusDetails>? GatewayStatusReceived;
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public event Action<ModelDownloadProgress>? DownloadProgressReceived;
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public event Action<string>? ErrorReceived;
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public event Action<ContextOverflowInfo>? ContextOverflowReceived;
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public event Action<string>? SessionClosedReceived;
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public event Action<int>? QueuePositionReceived;
 
-        /// <inheritdoc/>
-        public GatewayStatusDetails? LastStatus { get; private set; }
+        /// <inheritdoc />
+        public GatewayStatusDetails? LastStatus => _connectionService.LastStatus;
 
-        /// <summary>Initializes the client and wires all server callbacks.</summary>
-        public GatewayHubClient(HubConnection connection)
+        /// <summary>Initializes the client and wires hub callbacks plus service telemetry.</summary>
+        public GatewayHubClient(HubConnection connection, GatewayConnectionService connectionService)
         {
             _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+            _connectionService = connectionService ?? throw new ArgumentNullException(nameof(connectionService));
 
             _connection.On<SessionTokenDelta>("ReceiveTokenDelta", HandleTokenDelta);
             _connection.On<string>("ReceiveError", HandleError);
             _connection.On<ContextOverflowInfo>("ReceiveContextOverflow", HandleContextOverflow);
-            _connection.On<GatewayStatusDetails>("ReceiveGatewayStatus", status =>
-            {
-                LastStatus = status;
-                GatewayStatusReceived?.Invoke(status);
-            });
             _connection.On<ModelDownloadProgress>("ReceiveDownloadProgress", progress =>
                 DownloadProgressReceived?.Invoke(progress));
             _connection.On<string>("ReceiveSessionClosed", sessionId =>
@@ -61,46 +57,17 @@ namespace InstanciumLens.AI.Services
             _connection.On<int>("ReceiveQueuePosition", position =>
                 QueuePositionReceived?.Invoke(position));
 
-            // Server evicts every session of the old ConnectionId on drop; pending streams are unrecoverable.
-            _connection.Reconnected += _ =>
-            {
-                FailAllPending(new GatewaySessionInactiveException("Connection reconnected; server evicted all sessions."));
-                return Task.CompletedTask;
-            };
-            _connection.Closed += _ =>
-            {
-                FailAllPending(new GatewayException("Gateway connection closed."));
-                return Task.CompletedTask;
-            };
+            _connectionService.StatusReceived += status => GatewayStatusReceived?.Invoke(status);
+            _connectionService.ErrorReceived += message => ErrorReceived?.Invoke(message);
         }
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public async Task EnsureConnectedAsync(CancellationToken cancellationToken = default)
         {
-            if (_connection.State == HubConnectionState.Connected)
-            {
-                return;
-            }
-
-            await _connectLock.WaitAsync(cancellationToken);
-            try
-            {
-                if (_connection.State == HubConnectionState.Disconnected)
-                {
-                    await _connection.StartAsync(cancellationToken);
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                throw new GatewayException($"Failed to start gateway connection: {ex.Message}", ex);
-            }
-            finally
-            {
-                _connectLock.Release();
-            }
+            await _connectionService.ConnectAsync(cancellationToken);
         }
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public async Task<string> RunCompletionAsync(
             string sessionId,
             string repoId,
@@ -109,13 +76,12 @@ namespace InstanciumLens.AI.Services
             CancellationToken cancellationToken = default)
         {
             ValidateArguments(sessionId, messages);
-
-            var pending = new PendingRequest();
+            PendingRequest pending = new();
             await RunCoreAsync(sessionId, repoId, messages, ephemeral, pending, cancellationToken);
             return await pending.Completion.Task;
         }
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public async IAsyncEnumerable<string> RunCompletionStreamAsync(
             string sessionId,
             string repoId,
@@ -124,25 +90,20 @@ namespace InstanciumLens.AI.Services
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             ValidateArguments(sessionId, messages);
-
-            // Iterator body intentionally has no try/catch: failures surface through the channel
-            // completion so yield semantics stay compliant with the iterator rules.
-            var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
+            Channel<string> channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
             {
                 SingleReader = true,
                 SingleWriter = true
             });
-
-            var pending = new PendingRequest { Stream = channel };
+            PendingRequest pending = new() { Stream = channel };
             _ = RunCoreAsync(sessionId, repoId, messages, ephemeral, pending, cancellationToken);
-
-            await foreach (var token in channel.Reader.ReadAllAsync(cancellationToken))
+            await foreach (string token in channel.Reader.ReadAllAsync(cancellationToken))
             {
                 yield return token;
             }
         }
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public async Task DestroySessionAsync(string sessionId)
         {
             try
@@ -151,40 +112,43 @@ namespace InstanciumLens.AI.Services
             }
             catch
             {
-                // Best-effort by contract: ephemeral declaration is the insurance policy.
+                // Session may already be evicted on the gateway side.
             }
         }
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public Task<int> GetSessionTokenCountAsync(string sessionId, CancellationToken cancellationToken = default) =>
             _connection.InvokeAsync<int>("GetSessionTokenCount", sessionId, cancellationToken);
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public Task RollbackSessionAsync(string sessionId, int targetPosition, CancellationToken cancellationToken = default) =>
             _connection.InvokeAsync("RollbackSession", sessionId, targetPosition, cancellationToken);
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public Task SubscribeToModelDownloadAsync(string repoId, CancellationToken cancellationToken = default) =>
             _connection.InvokeAsync("SubscribeToModelDownload", repoId, cancellationToken);
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public Task UnsubscribeFromModelDownloadAsync(string repoId, CancellationToken cancellationToken = default) =>
             _connection.InvokeAsync("UnsubscribeFromModelDownload", repoId, cancellationToken);
 
-        /// <inheritdoc/>
+        /// <inheritdoc />
         public Task<GatewayStatusDetails> GetGatewayStatusAsync(CancellationToken cancellationToken = default) =>
-            _connection.InvokeAsync<GatewayStatusDetails>("GetGatewayStatus", cancellationToken);
+            _connectionService.FetchStatusAsync(cancellationToken);
 
         private static void ValidateArguments(string sessionId, IReadOnlyList<GatewayChatMessage> messages)
         {
-            if (string.IsNullOrWhiteSpace(sessionId)) throw new ArgumentNullException(nameof(sessionId));
-            if (messages == null || messages.Count == 0) throw new ArgumentException("Message sequence must not be empty.", nameof(messages));
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                throw new ArgumentNullException(nameof(sessionId));
+            }
+
+            if (messages == null || messages.Count == 0)
+            {
+                throw new ArgumentException("Message sequence must not be empty.", nameof(messages));
+            }
         }
 
-        /// <summary>
-        /// Shared lifecycle core: connect, join, ephemeral mark, send sequence, single retry with
-        /// re-join on eviction, best-effort destroy in every exit path.
-        /// </summary>
         private async Task RunCoreAsync(
             string sessionId,
             string repoId,
@@ -198,13 +162,12 @@ namespace InstanciumLens.AI.Services
             {
                 await EnsureConnectedAsync(cancellationToken);
                 await JoinAsync(sessionId, repoId, ephemeral, cancellationToken);
-
                 int attempt = 0;
                 while (true)
                 {
                     try
                     {
-                        foreach (var message in messages)
+                        foreach (GatewayChatMessage message in messages)
                         {
                             await _connection.InvokeAsync("SendPromptDelta", sessionId, message, cancellationToken);
                         }
@@ -214,10 +177,8 @@ namespace InstanciumLens.AI.Services
                     }
                     catch (Exception ex) when (attempt == 0 && IsSessionEvicted(ex))
                     {
-                        // Wire contract 8.2: single retry with re-Join; a fresh completion target is
-                        // required because the evicted stream already faulted the previous one.
                         attempt++;
-                        var retried = new PendingRequest { Stream = pending.Stream };
+                        PendingRequest retried = new() { Stream = pending.Stream };
                         pending = retried;
                         _pending[sessionId] = retried;
                         await JoinAsync(sessionId, repoId, ephemeral, cancellationToken);
@@ -248,7 +209,7 @@ namespace InstanciumLens.AI.Services
 
         private void HandleTokenDelta(SessionTokenDelta delta)
         {
-            if (delta == null || !_pending.TryGetValue(delta.SessionId, out var pending))
+            if (delta == null || !_pending.TryGetValue(delta.SessionId, out PendingRequest? pending))
             {
                 return;
             }
@@ -273,15 +234,13 @@ namespace InstanciumLens.AI.Services
         private void HandleError(string message)
         {
             ErrorReceived?.Invoke(message);
-
-            var target = _pending.Keys.FirstOrDefault(id => message.Contains(id, StringComparison.OrdinalIgnoreCase));
+            string? target = _pending.Keys.FirstOrDefault(id => message.Contains(id, StringComparison.OrdinalIgnoreCase));
             if (target != null)
             {
                 FailPending(target, BuildErrorException(message));
                 return;
             }
 
-            // Unroutable business error: fail everything pending so callers never hang silently.
             FailAllPending(BuildErrorException(message));
         }
 
@@ -304,7 +263,7 @@ namespace InstanciumLens.AI.Services
 
         private void FailPending(string sessionId, Exception exception)
         {
-            if (_pending.TryRemove(sessionId, out var pending))
+            if (_pending.TryRemove(sessionId, out PendingRequest? pending))
             {
                 pending.Completion.TrySetException(exception);
                 pending.Stream?.Writer.TryComplete(exception);
@@ -313,7 +272,7 @@ namespace InstanciumLens.AI.Services
 
         private void FailAllPending(Exception exception)
         {
-            foreach (var key in _pending.Keys.ToArray())
+            foreach (string key in _pending.Keys.ToArray())
             {
                 FailPending(key, exception);
             }
@@ -322,8 +281,11 @@ namespace InstanciumLens.AI.Services
         private sealed class PendingRequest
         {
             public StringBuilder Buffer { get; } = new();
+
             public Channel<string>? Stream { get; init; }
-            public TaskCompletionSource<string> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public TaskCompletionSource<string> Completion { get; } =
+                new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
     }
 }
