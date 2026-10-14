@@ -18,6 +18,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <ProjectReference Include="..\..\src\InstanciumLens.Core\InstanciumLens.Core.csproj" />
 	  <ProjectReference Include="..\..\src\InstanciumLens.Infrastructure\InstanciumLens.Infrastructure.csproj" />
 	</ItemGroup>
 

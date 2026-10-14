@@ -1,4 +1,3 @@
-// File: src/InstanciumLens.Infrastructure/Data/SqLiteGraphRepository.cs
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -25,6 +24,7 @@ namespace InstanciumLens.Infrastructure.Data
             : this(targetFolderPath, profileName, null)
         {
         }
+
         public SqLiteGraphRepository(string targetFolderPath, string profileName, string? branchId)
         {
             if (string.IsNullOrWhiteSpace(targetFolderPath))
@@ -34,10 +34,8 @@ namespace InstanciumLens.Infrastructure.Data
 
             _hiddenFolderPath = Path.Combine(targetFolderPath, ".instancium");
             EnsureHiddenDirectory(_hiddenFolderPath);
-
             string safeProfileName = SanitizeName(profileName);
             string dbPath;
-
             if (string.IsNullOrWhiteSpace(branchId))
             {
                 dbPath = Path.Combine(_hiddenFolderPath, $"knowledge_graph_{safeProfileName}.db");
@@ -57,7 +55,6 @@ namespace InstanciumLens.Infrastructure.Data
         {
             using var connection = new SqliteConnection(_dbConnectionString);
             connection.Open();
-
             using (var command = connection.CreateCommand())
             {
                 command.CommandText = @"
@@ -74,7 +71,6 @@ CREATE TABLE IF NOT EXISTS Entities (
     ConfidenceScore REAL NOT NULL DEFAULT 1.0,
     SourceDocumentNodeIds TEXT NOT NULL DEFAULT '[]'
 );
-
 CREATE TABLE IF NOT EXISTS Relationships (
     SourceEntityId TEXT NOT NULL,
     TargetEntityId TEXT NOT NULL,
@@ -83,16 +79,26 @@ CREATE TABLE IF NOT EXISTS Relationships (
     Weight REAL,
     PRIMARY KEY (SourceEntityId, TargetEntityId, RelationType)
 );
-
 CREATE INDEX IF NOT EXISTS IX_Relationships_SourceEntityId ON Relationships(SourceEntityId);
 CREATE INDEX IF NOT EXISTS IX_Relationships_TargetEntityId ON Relationships(TargetEntityId);
 CREATE INDEX IF NOT EXISTS IX_Relationships_RelationType ON Relationships(RelationType);
 CREATE INDEX IF NOT EXISTS IX_Entities_Type ON Entities(Type);
 CREATE INDEX IF NOT EXISTS IX_Entities_NodeKind ON Entities(NodeKind);
+CREATE TABLE IF NOT EXISTS PageCheckpoints (
+    PageKey TEXT PRIMARY KEY,
+    FilePath TEXT NOT NULL,
+    PageNumber INTEGER NOT NULL,
+    FileFingerprint TEXT NOT NULL,
+    SchemaHash TEXT NOT NULL,
+    Pass1Completed INTEGER NOT NULL DEFAULT 0,
+    Pass2Completed INTEGER NOT NULL DEFAULT 0,
+    RawText TEXT,
+    UpdatedAt TEXT NOT NULL DEFAULT ''
+);
 ";
-
                 command.ExecuteNonQuery();
             }
+
             EnsureEntityColumn(connection, "NodeKind", "TEXT NOT NULL DEFAULT 'Entity'");
             EnsureEntityColumn(connection, "RuleExpression", "TEXT");
             EnsureEntityColumn(connection, "Standard", "TEXT");
@@ -105,13 +111,10 @@ CREATE INDEX IF NOT EXISTS IX_Entities_NodeKind ON Entities(NodeKind);
         private static void EnsureEntityColumn(SqliteConnection connection, string columnName, string columnDefinition)
         {
             bool exists = false;
-
             using (var command = connection.CreateCommand())
             {
                 command.CommandText = "PRAGMA table_info(Entities);";
-
                 using var reader = command.ExecuteReader();
-
                 while (reader.Read())
                 {
                     if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
@@ -135,30 +138,23 @@ CREATE INDEX IF NOT EXISTS IX_Entities_NodeKind ON Entities(NodeKind);
         public async Task SaveGraphSegmentAsync(KnowledgeGraph graphSegment, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(graphSegment);
-
             using var connection = new SqliteConnection(_dbConnectionString);
             await connection.OpenAsync(cancellationToken);
-
             using var transaction = connection.BeginTransaction();
-
             try
             {
                 foreach (GraphEntity entity in graphSegment.Entities)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-
                     using var command = CreateEntityCommand(connection, transaction, entity);
                     await command.ExecuteNonQueryAsync(cancellationToken);
                 }
-
                 foreach (GraphRelationship relationship in graphSegment.Relationships)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-
                     using var command = CreateRelationshipCommand(connection, transaction, relationship);
                     await command.ExecuteNonQueryAsync(cancellationToken);
                 }
-
                 await transaction.CommitAsync(cancellationToken);
             }
             catch
@@ -167,42 +163,34 @@ CREATE INDEX IF NOT EXISTS IX_Entities_NodeKind ON Entities(NodeKind);
                 throw;
             }
         }
+
         public async Task SaveChangesAsync(GraphChange change, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(change);
-
             using var connection = new SqliteConnection(_dbConnectionString);
             await connection.OpenAsync(cancellationToken);
-
             using var transaction = connection.BeginTransaction();
-
             try
             {
                 foreach (GraphEntity entity in change.AddedOrUpdatedNodes)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-
                     using var command = CreateEntityCommand(connection, transaction, entity);
                     await command.ExecuteNonQueryAsync(cancellationToken);
                 }
-
                 foreach (GraphRelationship relationship in change.AddedOrUpdatedRelationships)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-
                     using var command = CreateRelationshipCommand(connection, transaction, relationship);
                     await command.ExecuteNonQueryAsync(cancellationToken);
                 }
-
                 foreach (string nodeId in change.RemovedNodeIds)
                 {
                     if (string.IsNullOrWhiteSpace(nodeId))
                     {
                         continue;
                     }
-
                     cancellationToken.ThrowIfCancellationRequested();
-
                     using (var entityCommand = connection.CreateCommand())
                     {
                         entityCommand.Transaction = transaction;
@@ -210,7 +198,6 @@ CREATE INDEX IF NOT EXISTS IX_Entities_NodeKind ON Entities(NodeKind);
                         entityCommand.Parameters.AddWithValue("$id", nodeId);
                         await entityCommand.ExecuteNonQueryAsync(cancellationToken);
                     }
-
                     using (var relationshipCommand = connection.CreateCommand())
                     {
                         relationshipCommand.Transaction = transaction;
@@ -220,31 +207,25 @@ CREATE INDEX IF NOT EXISTS IX_Entities_NodeKind ON Entities(NodeKind);
                         await relationshipCommand.ExecuteNonQueryAsync(cancellationToken);
                     }
                 }
-
                 foreach (GraphRelationshipKey? key in change.RemovedRelationships)
                 {
                     if (key == null)
                     {
                         continue;
                     }
-
                     cancellationToken.ThrowIfCancellationRequested();
-
                     using var command = connection.CreateCommand();
                     command.Transaction = transaction;
                     command.CommandText = @"
 DELETE FROM Relationships
 WHERE SourceEntityId = $source
-  AND TargetEntityId = $target
-  AND RelationType = $relationType";
-
+AND TargetEntityId = $target
+AND RelationType = $relationType";
                     command.Parameters.AddWithValue("$source", key.SourceEntityId);
                     command.Parameters.AddWithValue("$target", key.TargetEntityId);
                     command.Parameters.AddWithValue("$relationType", key.RelationType);
-
                     await command.ExecuteNonQueryAsync(cancellationToken);
                 }
-
                 await transaction.CommitAsync(cancellationToken);
             }
             catch
@@ -257,35 +238,27 @@ WHERE SourceEntityId = $source
         public async Task<KnowledgeGraph> LoadFullGraphAsync(CancellationToken cancellationToken = default)
         {
             var graph = new KnowledgeGraph();
-
             using var connection = new SqliteConnection(_dbConnectionString);
             await connection.OpenAsync(cancellationToken);
-
             using (var entityCommand = connection.CreateCommand())
             {
                 entityCommand.CommandText = $"SELECT {EntityColumns} FROM Entities";
-
                 using var reader = await entityCommand.ExecuteReaderAsync(cancellationToken);
-
                 while (await reader.ReadAsync(cancellationToken))
                 {
                     graph.Entities.Add(ReadEntity(reader));
                 }
             }
-
             using (var relationshipCommand = connection.CreateCommand())
             {
                 relationshipCommand.CommandText =
                     "SELECT SourceEntityId, TargetEntityId, RelationType, Description, Weight FROM Relationships";
-
                 using var reader = await relationshipCommand.ExecuteReaderAsync(cancellationToken);
-
                 while (await reader.ReadAsync(cancellationToken))
                 {
                     graph.Relationships.Add(ReadRelationship(reader));
                 }
             }
-
             return graph;
         }
 
@@ -294,11 +267,9 @@ WHERE SourceEntityId = $source
             CancellationToken cancellationToken = default)
         {
             var subGraph = new KnowledgeGraph();
-
             List<string>? keywordList = keywords?
                 .Where(keyword => !string.IsNullOrWhiteSpace(keyword))
                 .ToList();
-
             if (keywordList == null || keywordList.Count == 0)
             {
                 return subGraph;
@@ -306,45 +277,36 @@ WHERE SourceEntityId = $source
 
             using var connection = new SqliteConnection(_dbConnectionString);
             await connection.OpenAsync(cancellationToken);
-
             using var relationshipCommand = connection.CreateCommand();
             var likeConditions = new List<string>();
-
             for (int i = 0; i < keywordList.Count; i++)
             {
                 string parameterName = $"@p{i}";
                 likeConditions.Add($"(e.Name LIKE {parameterName} OR e.Description LIKE {parameterName})");
                 relationshipCommand.Parameters.AddWithValue(parameterName, $"%{keywordList[i]}%");
             }
-
             string likeClause = string.Join(" OR ", likeConditions);
-
             relationshipCommand.CommandText = $@"
 SELECT r.SourceEntityId, r.TargetEntityId, r.RelationType, r.Description, r.Weight
 FROM Relationships r
 JOIN Entities e ON r.SourceEntityId = e.Id OR r.TargetEntityId = e.Id
 WHERE {likeClause}";
-
             var connectedEntityIds = new HashSet<string>(StringComparer.Ordinal);
-
             using (var reader = await relationshipCommand.ExecuteReaderAsync(cancellationToken))
             {
                 while (await reader.ReadAsync(cancellationToken))
                 {
                     GraphRelationship relationship = ReadRelationship(reader);
                     subGraph.Relationships.Add(relationship);
-
                     connectedEntityIds.Add(relationship.SourceEntityId);
                     connectedEntityIds.Add(relationship.TargetEntityId);
                 }
             }
-
             if (connectedEntityIds.Count > 0)
             {
                 using var entityCommand = connection.CreateCommand();
                 var idParameters = new List<string>();
                 int index = 0;
-
                 foreach (string id in connectedEntityIds)
                 {
                     string parameterName = $"@id{index}";
@@ -352,19 +314,177 @@ WHERE {likeClause}";
                     entityCommand.Parameters.AddWithValue(parameterName, id);
                     index++;
                 }
-
                 string inClause = string.Join(",", idParameters);
                 entityCommand.CommandText = $"SELECT {EntityColumns} FROM Entities WHERE Id IN ({inClause})";
-
                 using var entityReader = await entityCommand.ExecuteReaderAsync(cancellationToken);
-
                 while (await entityReader.ReadAsync(cancellationToken))
                 {
                     subGraph.Entities.Add(ReadEntity(entityReader));
                 }
             }
-
             return subGraph;
+        }
+
+        public async Task<PipelineCheckpointSnapshot> LoadCheckpointSnapshotAsync(CancellationToken cancellationToken = default)
+        {
+            var snapshot = new PipelineCheckpointSnapshot();
+            using var connection = new SqliteConnection(_dbConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                "SELECT PageKey, FilePath, PageNumber, FileFingerprint, SchemaHash, Pass1Completed, Pass2Completed, RawText " +
+                "FROM PageCheckpoints";
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                snapshot.Add(new PageCheckpoint
+                {
+                    PageKey = reader.GetString(0),
+                    FilePath = reader.GetString(1),
+                    PageNumber = reader.GetInt32(2),
+                    FileFingerprint = reader.GetString(3),
+                    SchemaHash = reader.GetString(4),
+                    Pass1Completed = reader.GetInt32(5) == 1,
+                    Pass2Completed = reader.GetInt32(6) == 1,
+                    RawText = reader.IsDBNull(7) ? null : reader.GetString(7)
+                });
+            }
+            return snapshot;
+        }
+
+        public async Task SavePagePass1Async(PageCheckpoint page, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(page);
+            using var connection = new SqliteConnection(_dbConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+INSERT INTO PageCheckpoints (
+    PageKey, FilePath, PageNumber, FileFingerprint, SchemaHash, Pass1Completed, Pass2Completed, RawText, UpdatedAt)
+VALUES ($pageKey, $filePath, $pageNumber, $fingerprint, $schemaHash, 1, 0, $rawText, $updatedAt)
+ON CONFLICT(PageKey) DO UPDATE SET
+    FilePath = excluded.FilePath,
+    PageNumber = excluded.PageNumber,
+    FileFingerprint = excluded.FileFingerprint,
+    SchemaHash = excluded.SchemaHash,
+    Pass1Completed = 1,
+    Pass2Completed = 0,
+    RawText = excluded.RawText,
+    UpdatedAt = excluded.UpdatedAt;";
+            AddCheckpointParameters(command, page);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        public async Task SavePageSegmentAsync(KnowledgeGraph pageSegment, PageCheckpoint page, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(pageSegment);
+            ArgumentNullException.ThrowIfNull(page);
+            using var connection = new SqliteConnection(_dbConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            using var transaction = connection.BeginTransaction();
+            try
+            {
+                string pattern = BuildSourceIdPattern(page.PageKey);
+                using (var deleteRelationships = connection.CreateCommand())
+                {
+                    deleteRelationships.Transaction = transaction;
+                    deleteRelationships.CommandText = @"
+DELETE FROM Relationships
+WHERE SourceEntityId IN (SELECT Id FROM Entities WHERE SourceDocumentNodeIds LIKE $pattern ESCAPE '\')
+   OR TargetEntityId IN (SELECT Id FROM Entities WHERE SourceDocumentNodeIds LIKE $pattern ESCAPE '\');";
+                    deleteRelationships.Parameters.AddWithValue("$pattern", pattern);
+                    await deleteRelationships.ExecuteNonQueryAsync(cancellationToken);
+                }
+                using (var deleteEntities = connection.CreateCommand())
+                {
+                    deleteEntities.Transaction = transaction;
+                    deleteEntities.CommandText = "DELETE FROM Entities WHERE SourceDocumentNodeIds LIKE $pattern ESCAPE '\\'";
+                    deleteEntities.Parameters.AddWithValue("$pattern", pattern);
+                    await deleteEntities.ExecuteNonQueryAsync(cancellationToken);
+                }
+                foreach (GraphEntity entity in pageSegment.Entities)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    using var entityCommand = CreateEntityCommand(connection, transaction, entity);
+                    await entityCommand.ExecuteNonQueryAsync(cancellationToken);
+                }
+                foreach (GraphRelationship relationship in pageSegment.Relationships)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    using var relationshipCommand = CreateRelationshipCommand(connection, transaction, relationship);
+                    await relationshipCommand.ExecuteNonQueryAsync(cancellationToken);
+                }
+                using (var checkpointCommand = connection.CreateCommand())
+                {
+                    checkpointCommand.Transaction = transaction;
+                    checkpointCommand.CommandText = @"
+INSERT INTO PageCheckpoints (
+    PageKey, FilePath, PageNumber, FileFingerprint, SchemaHash, Pass1Completed, Pass2Completed, RawText, UpdatedAt)
+VALUES ($pageKey, $filePath, $pageNumber, $fingerprint, $schemaHash, 1, 1, $rawText, $updatedAt)
+ON CONFLICT(PageKey) DO UPDATE SET
+    FileFingerprint = excluded.FileFingerprint,
+    SchemaHash = excluded.SchemaHash,
+    Pass1Completed = 1,
+    Pass2Completed = 1,
+    RawText = excluded.RawText,
+    UpdatedAt = excluded.UpdatedAt;";
+                    AddCheckpointParameters(checkpointCommand, page);
+                    await checkpointCommand.ExecuteNonQueryAsync(cancellationToken);
+                }
+                await transaction.CommitAsync(cancellationToken);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
+
+        public async Task ClearPipelineAsync(bool clearGraph, CancellationToken cancellationToken = default)
+        {
+            using var connection = new SqliteConnection(_dbConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            using var transaction = connection.BeginTransaction();
+            try
+            {
+                using (var checkpoints = connection.CreateCommand())
+                {
+                    checkpoints.Transaction = transaction;
+                    checkpoints.CommandText = "DELETE FROM PageCheckpoints;";
+                    await checkpoints.ExecuteNonQueryAsync(cancellationToken);
+                }
+                if (clearGraph)
+                {
+                    using (var relationships = connection.CreateCommand())
+                    {
+                        relationships.Transaction = transaction;
+                        relationships.CommandText = "DELETE FROM Relationships;";
+                        await relationships.ExecuteNonQueryAsync(cancellationToken);
+                    }
+                    using (var entities = connection.CreateCommand())
+                    {
+                        entities.Transaction = transaction;
+                        entities.CommandText = "DELETE FROM Entities;";
+                        await entities.ExecuteNonQueryAsync(cancellationToken);
+                    }
+                }
+                await transaction.CommitAsync(cancellationToken);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
+
+        public async Task<int> CountEntitiesAsync(CancellationToken cancellationToken = default)
+        {
+            using var connection = new SqliteConnection(_dbConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM Entities";
+            object? result = await command.ExecuteScalarAsync(cancellationToken);
+            return Convert.ToInt32(result, CultureInfo.InvariantCulture);
         }
 
         private static SqliteCommand CreateEntityCommand(
@@ -374,7 +494,6 @@ WHERE {likeClause}";
         {
             var command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = @"
 INSERT OR REPLACE INTO Entities (
     Id,
@@ -402,7 +521,6 @@ VALUES (
     $confidenceScore,
     $sourceDocumentNodeIds
 )";
-
             command.Parameters.AddWithValue("$id", entity.Id);
             command.Parameters.AddWithValue("$name", entity.Name);
             command.Parameters.AddWithValue("$type", entity.Type);
@@ -416,7 +534,6 @@ VALUES (
             command.Parameters.AddWithValue(
                 "$sourceDocumentNodeIds",
                 JsonSerializer.Serialize(entity.SourceDocumentNodeIds ?? new List<string>()));
-
             return command;
         }
 
@@ -427,7 +544,6 @@ VALUES (
         {
             var command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = @"
 INSERT OR REPLACE INTO Relationships (
     SourceEntityId,
@@ -443,13 +559,11 @@ VALUES (
     $description,
     $weight
 )";
-
             command.Parameters.AddWithValue("$source", relationship.SourceEntityId);
             command.Parameters.AddWithValue("$target", relationship.TargetEntityId);
             command.Parameters.AddWithValue("$relationType", relationship.RelationType);
             command.Parameters.AddWithValue("$description", ToDbValue(relationship.Description));
             command.Parameters.AddWithValue("$weight", relationship.Weight);
-
             return command;
         }
 
@@ -489,7 +603,6 @@ VALUES (
             {
                 return GraphNodeKind.Entity;
             }
-
             return Enum.TryParse<GraphNodeKind>(value, ignoreCase: true, out GraphNodeKind result)
                 ? result
                 : GraphNodeKind.Entity;
@@ -501,7 +614,6 @@ VALUES (
             {
                 return null;
             }
-
             return Enum.TryParse<ValidationSeverity>(value, ignoreCase: true, out ValidationSeverity result)
                 ? result
                 : null;
@@ -513,7 +625,6 @@ VALUES (
             {
                 return new List<string>();
             }
-
             try
             {
                 return JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
@@ -530,12 +641,10 @@ VALUES (
         private static void EnsureHiddenDirectory(string path)
         {
             var directory = new DirectoryInfo(path);
-
             if (!directory.Exists)
             {
                 directory.Create();
             }
-
             if ((directory.Attributes & FileAttributes.Hidden) != FileAttributes.Hidden)
             {
                 directory.Attributes |= FileAttributes.Hidden;
@@ -548,16 +657,30 @@ VALUES (
             {
                 return "default";
             }
-
             char[] invalidChars = Path.GetInvalidFileNameChars();
-
             string result = new string(value
                 .Select(ch => invalidChars.Contains(ch) || char.IsWhiteSpace(ch)
                     ? '_'
                     : char.ToLowerInvariant(ch))
                 .ToArray());
-
             return string.IsNullOrWhiteSpace(result) ? "default" : result;
+        }
+
+        private static void AddCheckpointParameters(SqliteCommand command, PageCheckpoint page)
+        {
+            command.Parameters.AddWithValue("$pageKey", page.PageKey);
+            command.Parameters.AddWithValue("$filePath", page.FilePath);
+            command.Parameters.AddWithValue("$pageNumber", page.PageNumber);
+            command.Parameters.AddWithValue("$fingerprint", page.FileFingerprint);
+            command.Parameters.AddWithValue("$schemaHash", page.SchemaHash);
+            command.Parameters.AddWithValue("$rawText", page.RawText == null ? DBNull.Value : page.RawText);
+            command.Parameters.AddWithValue("$updatedAt", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+        }
+
+        private static string BuildSourceIdPattern(string pageKey)
+        {
+            string escaped = pageKey.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+            return "%\"" + escaped + "\"%";
         }
     }
 }
