@@ -110,11 +110,11 @@
             {
                 @foreach (var profile in profiles)
                 {
-                    <button type="button" class="profile-card" @onclick="() => OpenProfile(profile)">
-                        <span class="profile-card__icon">@profile.Icon</span>
+                    <button class="profile-card" @onclick="() => OpenProfile(profile)">
+                        <span class="profile-card__icon">@GraphProfilePresentation.ResolveIcon(profile.Icon)</span>
                         <span class="profile-card__body">
-                            <span class="profile-card__name">@profile.DisplayName</span>
-                            <span class="profile-card__desc">@profile.Description</span>
+                            <span class="profile-card__name">@GraphProfilePresentation.ResolveDisplayName(profile.DisplayName, profile.Id)</span>
+                            <span class="profile-card__desc">@GraphProfilePresentation.ResolveDescription(profile.Description, string.Empty)</span>
                             <span class="profile-card__meta">@GetProfileMeta(profile)</span>
                         </span>
                     </button>

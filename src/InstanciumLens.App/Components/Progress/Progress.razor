@@ -33,19 +33,19 @@
 
             <!-- Status Details -->
             <div class="progress-details">
-                <span class="progress-message">@State.StatusMessage</span>
-                @if (State.TotalDocuments > 0)
+               <p class="progress__message" title="@DocumentTooltip">@State?.StatusMessage</p>
+                @if (State?.TotalDocuments > 0)
                 {
                     <span class="progress-count">@State.ProcessedDocuments / @State.TotalDocuments files</span>
                 }
             </div>
 
             <!-- Actions on Completion or Error -->
-            @if (State.CurrentPhase == ProcessingPhase.Error)
+            @if (State?.CurrentPhase == ProcessingPhase.Error)
             {
                 <button class="btn btn--ghost mt-3" @onclick="Dismiss">Close</button>
             }
-            @if (State.CurrentPhase == ProcessingPhase.Completed)
+            @if (State?.CurrentPhase == ProcessingPhase.Completed)
             {
                 <button class="btn btn--primary mt-3" @onclick="Dismiss">View Graph</button>
             }
@@ -65,6 +65,8 @@
     /// </summary>
     [Parameter]
     public EventCallback OnDismiss { get; set; }
+
+    private string DocumentTooltip => State?.CurrentDocumentName ?? string.Empty;
 
     private string GetStepClass(ProcessingPhase targetPhase)
     {

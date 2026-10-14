@@ -19,12 +19,20 @@ namespace InstanciumLens.Core.Models
         public ProcessingPhase CurrentPhase { get; set; } = ProcessingPhase.Idle;
         public int ProgressPercentage { get; set; }
         public string StatusMessage { get; set; } = string.Empty;
-
-        // Additional properties for UI data binding
         public int TotalDocuments { get; set; }
         public int ProcessedDocuments { get; set; }
+        public int TotalPages { get; set; }
+        public int Pass1ProcessedPages { get; set; }
+        public int Pass2ProcessedPages { get; set; }
+        public int ExtractedEntities { get; set; }
+        public int ExtractedRelationships { get; set; }
+        public int ResumedPass1Pages { get; set; }
+        public int ResumedPass2Pages { get; set; }
+        public string? CurrentDocumentName { get; set; }
+        public TimeSpan Elapsed { get; set; }
+        public TimeSpan? EstimatedRemaining { get; set; }
         public bool IsRunning => CurrentPhase != ProcessingPhase.Idle &&
-                                 CurrentPhase != ProcessingPhase.Completed &&
-                                 CurrentPhase != ProcessingPhase.Error;
+            CurrentPhase != ProcessingPhase.Completed &&
+            CurrentPhase != ProcessingPhase.Error;
     }
 }

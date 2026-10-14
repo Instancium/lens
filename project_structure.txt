@@ -10,6 +10,7 @@
 |    |    |    \--- DownloadProgress.cs
 |    |    +--- Services
 |    |    |    +--- GatewayAiService.cs
+|    |    |    +--- GatewayConnectionService.cs
 |    |    |    +--- GatewayExceptions.cs
 |    |    |    +--- GatewayHubClient.cs
 |    |    |    \--- GatewaySessionManager.cs
@@ -116,6 +117,7 @@
 |    +--- InstanciumLens.Core
 |    |    +--- Interfaces
 |    |    |    +--- IAppStateService.cs
+|    |    |    +--- IDecisionEngine.cs
 |    |    |    +--- IDocumentVision.cs
 |    |    |    +--- IFolderAnalyzer.cs
 |    |    |    +--- IFolderManifestService.cs
@@ -123,17 +125,22 @@
 |    |    |    +--- IGraphRagManager.cs
 |    |    |    +--- IGraphRepository.cs
 |    |    |    +--- IGraphRepositoryFactory.cs
+|    |    |    +--- IGraphValidationPipeline.cs
 |    |    |    \--- ILocalModelService.cs
 |    |    +--- Models
 |    |    |    +--- CitationContext.cs
+|    |    |    +--- DecisionModels.cs
 |    |    |    +--- DocumentNode.cs
 |    |    |    +--- FolderManifest.cs
 |    |    |    +--- FolderStatistics.cs
+|    |    |    +--- GraphNodeKind.cs
 |    |    |    +--- GraphProfile.cs
 |    |    |    +--- KnowledgeGraph.cs
 |    |    |    \--- ProcessingState.cs
 |    |    +--- Services
-|    |    |    \--- GraphRagManager.cs
+|    |    |    +--- DecisionEngine.cs
+|    |    |    +--- GraphRagManager.cs
+|    |    |    \--- GraphValidationPipeline.cs
 |    |    \--- InstanciumLens.Core.csproj
 |    \--- InstanciumLens.Infrastructure
 |         +--- Data
@@ -147,12 +154,15 @@
 |         |    \--- WindowsDocumentVision.cs
 |         \--- InstanciumLens.Infrastructure.csproj
 +--- tests
-|    \--- InstanciumLens.Infrastructure.Tests
-|         +--- InstanciumLens.Infrastructure.Tests.csproj
-|         +--- MinimalPdfBuilder.cs
-|         \--- WindowsDocumentVisionTests.cs
+|    +--- InstanciumLens.Infrastructure.Tests
+|    |    +--- DecisionEngineTests.cs
+|    |    +--- InstanciumLens.Infrastructure.Tests.csproj
+|    |    +--- MinimalPdfBuilder.cs
+|    |    \--- WindowsDocumentVisionTests.cs
+|    \--- .gitkeep
 +--- .gitattributes
 +--- .gitignore
++--- AI_FILE_GUIDE.md
 +--- InstanciumLens.slnx
 +--- project_structure.txt
 \--- Show-Structure.ps1

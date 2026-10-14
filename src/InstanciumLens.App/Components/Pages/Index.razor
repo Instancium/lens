@@ -1,6 +1,7 @@
 ﻿@page "/"
-@using InstanciumLens.Core.Models
 @using InstanciumLens.App.Components.Progress
+@using InstanciumLens.Core.Models
+@using Microsoft.Extensions.Logging
 
 @inject InstanciumLens.Core.Interfaces.IFolderPickerService FolderPickerService
 @inject InstanciumLens.Core.Interfaces.IFolderAnalyzer FolderAnalyzer
@@ -52,27 +53,45 @@
         <div class="profiles-section">
             @if (graphs.Any())
             {
-                <div class="profiles-grid">
-                    @foreach (var profile in graphs)
-                    {
-                        <div class="profile-card">
-                            <div class="profile-card__header">
-                                <span class="profile-card__icon">@profile.Icon</span>
-                                <h3 class="profile-card__title">@profile.DisplayName</h3>
-                            </div>
-                            <p class="profile-card__desc">@profile.Description</p>
-
-                            <div class="profile-card__actions">
-                                <button class="btn btn--ghost btn--small" @onclick="() => StartAnalysis(profile)">
-                                    ▶ Build / Update Graph
-                                </button>
-                                <button class="btn btn--primary btn--small" @onclick="() => OpenChat(profile)">
-                                    💬 Open Chat
-                                </button>
-                            </div>
-                        </div>
-                    }
-                </div>
+                <section class="graphs-section">
+                    <div class="graphs-section__header">
+                        <h2 class="graphs-section__title">Graph Profiles</h2>
+                        <span class="graphs-section__count">@graphs.Count</span>
+                    </div>
+                    <div class="graphs-list">
+                        @foreach (var profile in graphs)
+                        {
+                            <article class="graph-card" @onclick="() => OpenChat(profile)">
+                                <div class="graph-card__icon">@GraphProfilePresentation.ResolveIcon(profile.Icon)</div>
+                                <div class="graph-card__content">
+                                    <h3 class="graph-card__title">@GraphProfilePresentation.ResolveDisplayName(profile.DisplayName, profile.Id)</h3>
+                                    <p class="graph-card__description">@GraphProfilePresentation.ResolveDescription(profile.Description, string.Empty)</p>
+                                    <div class="graph-card__meta">
+                                        <span>@profile.CreatedAt.ToLocalTime().ToString("d")</span>
+                                        <span>@profile.DocumentCount docs</span>
+                                    </div>
+                                </div>
+                                <div class="graph-card__actions">
+                                    <button class="btn btn--secondary"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => StartAnalysis(profile)">
+                                        Build / Update Graph
+                                    </button>
+                                    <button class="btn btn--secondary"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => StartAnalysis(profile, rebuildFromScratch: true)">
+                                        Rebuild
+                                    </button>
+                                    <button class="btn btn--primary"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => OpenChat(profile)">
+                                        Open Chat
+                                    </button>
+                                </div>
+                            </article>
+                        }
+                    </div>
+                </section>
             }
             else
             {
@@ -103,6 +122,14 @@
     private FolderStatistics? folderStats;
     private bool isLoading = false;
     private List<GraphProfile> graphs = new();
+
+    private const int ProgressLogPercentStep = 10;
+
+    private ProcessingPhase _lastLoggedPhase;
+    private int _lastLoggedPercent;
+
+    [Inject]
+    private Microsoft.Extensions.Logging.ILogger<Index> Logger { get; set; } = default!;
 
     // State for the Progress overlay component
     private ProcessingState currentProcessingState = new();
@@ -179,39 +206,60 @@
     // ==========================================
     // ANALYSIS ORCHESTRATION LOGIC
     // ==========================================
-    private async Task StartAnalysis(GraphProfile profile)
+    private async Task StartAnalysis(GraphProfile profile, bool rebuildFromScratch = false)
     {
         if (string.IsNullOrEmpty(selectedFolderPath)) return;
-
-        // 1. Initialize state to trigger the overlay
+        _lastLoggedPhase = ProcessingPhase.Idle;
+        _lastLoggedPercent = 0;
         currentProcessingState = new ProcessingState { CurrentPhase = ProcessingPhase.Pass1_TextExtraction };
         await InvokeAsync(StateHasChanged);
-
         try
         {
-            // 2. Run the heavy analysis pipeline.
-            // The callback instantly pushes state updates to the Progress component.
             await GraphRagManager.BuildGraphForFolderAsync(
                 selectedFolderPath,
                 profile,
                 state =>
                 {
                     currentProcessingState = state;
-                    // Force Blazor UI thread to redraw the progress bar
+                    LogProgressThrottled(state);
                     InvokeAsync(StateHasChanged);
-                });
+                },
+                rebuildFromScratch);
         }
         catch (Exception ex)
         {
             currentProcessingState.CurrentPhase = ProcessingPhase.Error;
             currentProcessingState.StatusMessage = $"Analysis failed: {ex.Message}";
+            Logger.LogError(ex, "Graph construction failed for profile {ProfileId}", profile.Id);
             await InvokeAsync(StateHasChanged);
         }
     }
 
+    private void LogProgressThrottled(ProcessingState state)
+    {
+        bool phaseChanged = state.CurrentPhase != _lastLoggedPhase;
+        bool percentStepReached = state.ProgressPercentage - _lastLoggedPercent >= ProgressLogPercentStep;
+        bool terminal = state.CurrentPhase == ProcessingPhase.Completed || state.CurrentPhase == ProcessingPhase.Error;
+        if (!phaseChanged && !percentStepReached && !terminal)
+        {
+            return;
+        }
+        _lastLoggedPhase = state.CurrentPhase;
+        _lastLoggedPercent = state.ProgressPercentage;
+        Logger.LogInformation(
+            "Pipeline {Phase} at {Percent}%: {Message}",
+            state.CurrentPhase,
+            state.ProgressPercentage,
+            state.StatusMessage);
+    }
+
+
     private void ResetProgress()
     {
-        currentProcessingState = new ProcessingState(); // Reset to Idle
+        currentProcessingState = new ProcessingState();
+        _lastLoggedPhase = ProcessingPhase.Idle;
+        _lastLoggedPercent = 0;
         StateHasChanged();
     }
+
 }

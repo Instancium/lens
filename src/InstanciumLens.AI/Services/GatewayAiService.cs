@@ -1,72 +1,78 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using InstanciumLens.AI.Abstractions;
 using InstanciumLens.AI.Configuration;
 using InstanciumLens.AI.Contracts;
 using InstanciumLens.Core.Interfaces;
 using InstanciumLens.Core.Models;
+using Microsoft.Extensions.Logging;
 
 namespace InstanciumLens.AI.Services
 {
-    /// <summary>
-    /// ILocalModelService implementation backed by InstantAIGate sessions.
-    /// Every call owns an ephemeral session; destruction is guaranteed by the hub client core
-    /// in all exit paths, so no double-destroy happens here.
-    /// </summary>
     public sealed class GatewayAiService : ILocalModelService
     {
         private readonly IGatewayHubClient _gateway;
         private readonly GatewaySettings _settings;
+        private readonly ILogger<GatewayAiService> _logger;
 
-        /// <summary>Initializes the service with the gateway facade and endpoint settings.</summary>
-        public GatewayAiService(IGatewayHubClient gateway, GatewaySettings settings)
+        public GatewayAiService(
+            IGatewayHubClient gateway,
+            GatewaySettings settings,
+            ILogger<GatewayAiService> logger)
         {
             _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        /// <inheritdoc/>
         public async Task<KnowledgeGraph> ExtractEntitiesAsync(
             DocumentNode document,
             string ontologySchemaJson,
             CancellationToken cancellationToken = default)
         {
             if (document == null) throw new ArgumentNullException(nameof(document));
-
+            var pageStopwatch = Stopwatch.StartNew();
+            _logger.LogInformation(
+                "Extraction started for {FileName} page {PageNumber}",
+                document.FileName,
+                document.PageNumber);
             string response = await CompleteAsync(
                 BuildExtractionSystemPrompt(ontologySchemaJson),
                 $"Text to analyze: {document.RawText}",
                 cancellationToken);
-
-            return ParseGraphSegment(response, document);
+            KnowledgeGraph segment = ParseGraphSegment(response, document);
+            _logger.LogInformation(
+                "Extraction completed for {FileName} page {PageNumber} in {ElapsedSeconds:F1} s ({EntityCount} entities, {RelationshipCount} relationships)",
+                document.FileName,
+                document.PageNumber,
+                pageStopwatch.Elapsed.TotalSeconds,
+                segment.Entities.Count,
+                segment.Relationships.Count);
+            return segment;
         }
 
-        /// <inheritdoc/>
         public Task<string> AnswerQueryAsync(
             string userQuery,
             KnowledgeGraph contextGraph,
             CancellationToken cancellationToken = default)
         {
             if (contextGraph == null) throw new ArgumentNullException(nameof(contextGraph));
-
             return CompleteAsync(BuildGraphAnswerSystemPrompt(contextGraph), userQuery, cancellationToken);
         }
 
-        /// <inheritdoc/>
         public async IAsyncEnumerable<string> AnswerQueryStreamAsync(
             string userQuery,
             CitationContext citationContext,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             if (citationContext == null) throw new ArgumentNullException(nameof(citationContext));
-
             string sessionId = "lens-chat-" + Guid.NewGuid().ToString("N");
             var messages = new List<GatewayChatMessage>
             {
                 GatewayChatMessage.System(BuildCitationAnswerSystemPrompt(citationContext)),
                 GatewayChatMessage.User(userQuery)
             };
-
             await foreach (var token in _gateway.RunCompletionStreamAsync(
                 sessionId, _settings.ActiveRepoId, messages, ephemeral: true, cancellationToken))
             {
@@ -74,13 +80,11 @@ namespace InstanciumLens.AI.Services
             }
         }
 
-        /// <inheritdoc/>
         public async Task<(GraphProfile Profile, string OntologySchemaJson)> GenerateOntologyProfileAsync(
             string userIntent,
             CancellationToken cancellationToken = default)
         {
             string response = await CompleteAsync(BuildOntologySystemPrompt(), userIntent, cancellationToken);
-
             string rawJson = CleanLlmJsonOutput(response);
             try
             {
@@ -91,17 +95,19 @@ namespace InstanciumLens.AI.Services
                     string safeId = string.IsNullOrWhiteSpace(llmResponse.ProfileName)
                         ? Guid.NewGuid().ToString("N")[..8]
                         : llmResponse.ProfileName.ToLower().Replace(" ", "_");
-
                     var profile = new GraphProfile
                     {
                         Id = safeId,
-                        DisplayName = llmResponse.DisplayName,
-                        Description = llmResponse.Description,
-                        Icon = string.IsNullOrWhiteSpace(llmResponse.Icon) ? "📊" : llmResponse.Icon,
+                        DisplayName = GraphProfilePresentation.ResolveDisplayName(
+                            llmResponse.DisplayName,
+                            GraphProfilePresentation.TitleFromId(safeId)),
+                        Description = GraphProfilePresentation.ResolveDescription(
+                            llmResponse.Description,
+                            $"Knowledge graph profile for domain '{safeId}'."),
+                        Icon = GraphProfilePresentation.ResolveIcon(llmResponse.Icon),
                         CreatedAt = DateTime.UtcNow,
                         DatabaseFile = $"knowledge_graph_{safeId}.db"
                     };
-
                     string schemaJson = JsonSerializer.Serialize(
                         llmResponse.OntologySchema,
                         new JsonSerializerOptions { WriteIndented = true });
@@ -110,16 +116,14 @@ namespace InstanciumLens.AI.Services
             }
             catch (JsonException)
             {
-                // Fall through to the fallback profile below.
             }
-
             var fallbackProfile = new GraphProfile
             {
                 Id = "default_audit",
                 DisplayName = "General Audit",
                 Description = "Fallback profile created due to generation error.",
                 DatabaseFile = "knowledge_graph_default.db",
-                Icon = "📑",
+                Icon = GraphProfilePresentation.FallbackIcon,
                 CreatedAt = DateTime.UtcNow
             };
             return (fallbackProfile, "{}");
@@ -133,7 +137,6 @@ namespace InstanciumLens.AI.Services
                 GatewayChatMessage.System(systemPrompt),
                 GatewayChatMessage.User(userPrompt)
             };
-
             return _gateway.RunCompletionAsync(sessionId, _settings.ActiveRepoId, messages, ephemeral: true, cancellationToken);
         }
 
@@ -150,15 +153,12 @@ namespace InstanciumLens.AI.Services
                     {
                         entity.SourceDocumentNodeIds.Add(document.Id);
                     }
-
                     return graphSegment;
                 }
             }
             catch (JsonException)
             {
-                // Malformed model output degrades to an empty segment, not to a crash.
             }
-
             return new KnowledgeGraph();
         }
 
@@ -174,8 +174,8 @@ namespace InstanciumLens.AI.Services
         {
             string contextJson = JsonSerializer.Serialize(context);
             return "You are an expert analytical assistant. Answer the user's question using ONLY the provided " +
-                   "Knowledge Graph context below. If the answer is not contained in the context, explicitly state " +
-                   $"that you do not have enough information.\nContext: {contextJson}";
+                "Knowledge Graph context below. If the answer is not contained in the context, explicitly state " +
+                $"that you do not have enough information.\nContext: {contextJson}";
         }
 
         private static string BuildCitationAnswerSystemPrompt(CitationContext context) =>
@@ -187,7 +187,9 @@ namespace InstanciumLens.AI.Services
         private static string BuildOntologySystemPrompt() =>
             "You are an expert data architect and ontology engineer. Your task is to analyze the user's intent " +
             "and design a strict Knowledge Graph ontology schema. You must output ONLY a valid JSON object. " +
-            "Do not add conversational text, markdown formatting, or explanations. The JSON must strictly follow this structure:\n" +
+            "Do not add conversational text, markdown formatting, or explanations. " +
+            "The string values inside the structure below are structural placeholders: never copy them verbatim, " +
+            "always produce original values for the user's domain. The JSON must strictly follow this structure:\n" +
             "{\n" +
             "  \"ProfileName\": \"short_english_name\",\n" +
             "  \"DisplayName\": \"Human readable title in the user's language\",\n" +
@@ -207,7 +209,6 @@ namespace InstanciumLens.AI.Services
             {
                 return text.Substring(start, end - start + 1);
             }
-
             return text;
         }
 
@@ -216,7 +217,7 @@ namespace InstanciumLens.AI.Services
             public string ProfileName { get; set; } = string.Empty;
             public string DisplayName { get; set; } = string.Empty;
             public string Description { get; set; } = string.Empty;
-            public string Icon { get; set; } = "📊";
+            public string Icon { get; set; } = GraphProfilePresentation.FallbackIcon;
             public JsonElement OntologySchema { get; set; }
         }
     }
