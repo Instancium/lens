@@ -8,6 +8,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace InstanciumLens.Core.Services
 {
@@ -31,6 +32,10 @@ namespace InstanciumLens.Core.Services
             _aiService = aiService ?? throw new ArgumentNullException(nameof(aiService));
             _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
         }
+        private static string SanitizeJsonKeys(string json)
+        {
+            return Regex.Replace(json, @"(?<="")\s+(?=""\s*:)", "");
+        }
 
         public async Task BuildGraphForFolderAsync(
             string folderPath,
@@ -52,7 +57,9 @@ namespace InstanciumLens.Core.Services
                 }
 
                 string ontologySchemaJson = await File.ReadAllTextAsync(schemaPath, cancellationToken);
+                ontologySchemaJson = SanitizeJsonKeys(ontologySchemaJson);
                 ValidateOntologySchema(ontologySchemaJson, schemaPath);
+
                 string schemaHash = BuildSchemaHash(ontologySchemaJson);
                 string[] pdfFiles = Directory.GetFiles(folderPath, "*.pdf", SearchOption.AllDirectories);
                 state.TotalDocuments = pdfFiles.Length;

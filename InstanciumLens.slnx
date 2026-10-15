@@ -4,6 +4,7 @@
     <Project Path="src/InstanciumLens.App/InstanciumLens.App.csproj" Id="61f47dcb-81a7-4d08-8744-aac22e1ea954">
       <Deploy Solution="Debug|*" />
     </Project>
+    <Project Path="src/InstanciumLens.Cli/InstanciumLens.Cli.csproj" />
     <Project Path="src/InstanciumLens.Core/InstanciumLens.Core.csproj" />
     <Project Path="src/InstanciumLens.Infrastructure/InstanciumLens.Infrastructure.csproj" />
   </Folder>

@@ -131,11 +131,14 @@
 |    |    |    +--- CitationContext.cs
 |    |    |    +--- DecisionModels.cs
 |    |    |    +--- DocumentNode.cs
+|    |    |    +--- DocumentPageProgress.cs
 |    |    |    +--- FolderManifest.cs
 |    |    |    +--- FolderStatistics.cs
 |    |    |    +--- GraphNodeKind.cs
 |    |    |    +--- GraphProfile.cs
+|    |    |    +--- GraphProfilePresentation.cs
 |    |    |    +--- KnowledgeGraph.cs
+|    |    |    +--- PageCheckpoint.cs
 |    |    |    \--- ProcessingState.cs
 |    |    +--- Services
 |    |    |    +--- DecisionEngine.cs
@@ -156,8 +159,12 @@
 +--- tests
 |    +--- InstanciumLens.Infrastructure.Tests
 |    |    +--- DecisionEngineTests.cs
+|    |    +--- FakeDocumentVision.cs
+|    |    +--- GraphRagManagerTests.cs
 |    |    +--- InstanciumLens.Infrastructure.Tests.csproj
 |    |    +--- MinimalPdfBuilder.cs
+|    |    +--- MultiPagePdfVisionTests.cs
+|    |    +--- TestPdfBuilder.cs
 |    |    \--- WindowsDocumentVisionTests.cs
 |    \--- .gitkeep
 +--- .gitattributes
