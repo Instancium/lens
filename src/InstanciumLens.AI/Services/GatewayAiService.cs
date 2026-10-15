@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using InstanciumLens.AI.Abstractions;
 using InstanciumLens.AI.Configuration;
 using InstanciumLens.AI.Contracts;
@@ -85,7 +86,7 @@ namespace InstanciumLens.AI.Services
             CancellationToken cancellationToken = default)
         {
             string response = await CompleteAsync(BuildOntologySystemPrompt(), userIntent, cancellationToken);
-            string rawJson = CleanLlmJsonOutput(response);
+            string rawJson = SanitizeJsonKeys(CleanLlmJsonOutput(response));
             try
             {
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -142,33 +143,261 @@ namespace InstanciumLens.AI.Services
 
         private KnowledgeGraph ParseGraphSegment(string response, DocumentNode document)
         {
-            string rawJson = CleanLlmJsonOutput(response);
+            string cleaned = SanitizeJsonKeys(CleanLlmJsonOutput(response));
+            cleaned = RepairTruncatedJson(cleaned);
+
+            KnowledgeGraph? graph = TryDeserializeStrict(cleaned, document);
+
+            if (graph == null || (graph.Entities.Count == 0 && graph.Relationships.Count == 0))
+            {
+                KnowledgeGraph? rescued = TryRescueViaJsonDocument(cleaned);
+                if (rescued != null && (rescued.Entities.Count > 0 || rescued.Relationships.Count > 0))
+                {
+                    _logger.LogInformation(
+                        "Strict parse yielded nothing for {FileName} page {PageNumber}; rescued {EntityCount} entities and {RelationshipCount} relationships from an alternative JSON shape.",
+                        document.FileName,
+                        document.PageNumber,
+                        rescued.Entities.Count,
+                        rescued.Relationships.Count);
+                    graph = rescued;
+                }
+            }
+
+            if (graph != null && (graph.Entities.Count > 0 || graph.Relationships.Count > 0))
+            {
+                foreach (GraphEntity entity in graph.Entities)
+                {
+                    entity.SourceDocumentNodeIds.Add(document.Id);
+                }
+                return graph;
+            }
+
+            string head = cleaned.Length > 400 ? cleaned[..400] : cleaned;
+            _logger.LogWarning(
+                "Empty graph for {FileName} page {PageNumber}. Cleaned JSON length {Length}. Head: {Head}",
+                document.FileName,
+                document.PageNumber,
+                cleaned.Length,
+                head);
+            return graph ?? new KnowledgeGraph();
+        }
+
+        private KnowledgeGraph? TryDeserializeStrict(string json, DocumentNode document)
+        {
             try
             {
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var graphSegment = JsonSerializer.Deserialize<KnowledgeGraph>(rawJson, options);
-                if (graphSegment != null)
+                return JsonSerializer.Deserialize<KnowledgeGraph>(json, options);
+            }
+            catch (JsonException ex)
+            {
+                string tail = json.Length > 150 ? json[^150..] : json;
+                _logger.LogError(ex, "JSON Parse Error. Length: {Length}, Tail: ...{Tail}", json.Length, tail);
+                return null;
+            }
+        }
+
+        private static KnowledgeGraph? TryRescueViaJsonDocument(string json)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(json);
+                JsonElement root = document.RootElement;
+
+                var entityElements = new List<JsonElement>();
+                var relationElements = new List<JsonElement>();
+
+                if (root.ValueKind == JsonValueKind.Array)
                 {
-                    foreach (var entity in graphSegment.Entities)
-                    {
-                        entity.SourceDocumentNodeIds.Add(document.Id);
-                    }
-                    return graphSegment;
+                    entityElements.AddRange(root.EnumerateArray());
                 }
+                else if (root.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (JsonProperty property in root.EnumerateObject())
+                    {
+                        if (property.Value.ValueKind != JsonValueKind.Array)
+                        {
+                            continue;
+                        }
+
+                        string normalized = property.Name
+                            .Replace("_", "", StringComparison.Ordinal)
+                            .Replace("-", "", StringComparison.Ordinal)
+                            .ToLowerInvariant();
+
+                        bool isEntityKey = normalized.Contains("entity") || normalized.Contains("node")
+                            || normalized == "items" || normalized == "objects";
+                        bool isRelationKey = normalized.Contains("relation") || normalized.Contains("edge")
+                            || normalized.Contains("link") || normalized.Contains("connection");
+
+                        if (isEntityKey)
+                        {
+                            entityElements.AddRange(property.Value.EnumerateArray());
+                        }
+                        else if (isRelationKey)
+                        {
+                            relationElements.AddRange(property.Value.EnumerateArray());
+                        }
+                        else if (entityElements.Count == 0 && LooksLikeEntityArray(property.Value))
+                        {
+                            entityElements.AddRange(property.Value.EnumerateArray());
+                        }
+                    }
+                }
+                else
+                {
+                    return null;
+                }
+
+                var graph = new KnowledgeGraph();
+                var idMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (JsonElement element in entityElements)
+                {
+                    if (element.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+
+                    string name = GetString(element, "Name", "name", "title", "label") ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        continue;
+                    }
+
+                    var entity = new GraphEntity
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        Name = name,
+                        Type = GetString(element, "Type", "type", "category", "label") ?? "Entity",
+                        Description = GetString(element, "Description", "description", "summary") ?? string.Empty,
+                        ConfidenceScore = GetDouble(element, 0.5, "ConfidenceScore", "confidence", "score", "confidence_score")
+                    };
+                    graph.Entities.Add(entity);
+
+                    string? originalId = GetString(element, "Id", "id", "uid", "entity_id");
+                    if (!string.IsNullOrWhiteSpace(originalId))
+                    {
+                        idMap[originalId] = entity.Id;
+                    }
+                    idMap[name] = entity.Id;
+                }
+
+                foreach (JsonElement element in relationElements)
+                {
+                    if (element.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+
+                    string sourceRef = GetString(element, "SourceEntityId", "SourceEntityName", "source_id", "source", "from", "sourceEntity", "source_name", "Source") ?? string.Empty;
+                    string targetRef = GetString(element, "TargetEntityId", "TargetEntityName", "target_id", "target", "to", "targetEntity", "target_name", "Target") ?? string.Empty;
+                    string relationType = GetString(element, "RelationType", "relation_type", "relation", "predicate", "type", "label") ?? string.Empty;
+
+                    if (!idMap.TryGetValue(sourceRef, out string? sourceId)
+                        || !idMap.TryGetValue(targetRef, out string? targetId)
+                        || string.IsNullOrWhiteSpace(relationType))
+                    {
+                        continue;
+                    }
+
+                    graph.Relationships.Add(new GraphRelationship
+                    {
+                        SourceEntityId = sourceId,
+                        TargetEntityId = targetId,
+                        RelationType = relationType,
+                        Weight = GetDouble(element, 1.0, "Weight", "weight", "confidence")
+                    });
+                }
+
+                return graph;
             }
             catch (JsonException)
             {
+                return null;
             }
-            return new KnowledgeGraph();
+        }
+
+        private static bool LooksLikeEntityArray(JsonElement array)
+        {
+            foreach (JsonElement item in array.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object)
+                {
+                    return false;
+                }
+
+                foreach (JsonProperty property in item.EnumerateObject())
+                {
+                    string normalized = property.Name.ToLowerInvariant();
+                    if (normalized is "name" or "title" or "type" or "label" or "entity")
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            return false;
+        }
+
+        private static string? GetString(JsonElement obj, params string[] propertyNames)
+        {
+            foreach (string propertyName in propertyNames)
+            {
+                if (obj.TryGetProperty(propertyName, out JsonElement value)
+                    && value.ValueKind == JsonValueKind.String)
+                {
+                    string result = value.GetString();
+                    if (!string.IsNullOrWhiteSpace(result))
+                    {
+                        return result;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static double GetDouble(JsonElement obj, double fallback, params string[] propertyNames)
+        {
+            foreach (string propertyName in propertyNames)
+            {
+                if (obj.TryGetProperty(propertyName, out JsonElement value)
+                    && value.ValueKind == JsonValueKind.Number
+                    && value.TryGetDouble(out double result))
+                {
+                    return result;
+                }
+            }
+
+            return fallback;
         }
 
         private static string BuildExtractionSystemPrompt(string ontologySchemaJson) =>
-            "You are a precise data extraction AI. Extract entities and relationships from the text " +
-            $"based on this JSON ontology schema:\n{ontologySchemaJson}\n" +
-            "Return strictly valid JSON matching the schema with 'Entities' and 'Relationships' arrays. " +
-            "Every entity and every relationship MUST include a numeric 'ConfidenceScore' field in range 0.0..1.0 " +
-            "expressing how certain you are that the fact is present in the text. " +
-            "Do not add markdown formatting, conversational filler, or explanations.";
+            "You are a precise data extraction AI. Your task is to extract entities and relationships from the user's text.\n\n" +
+            "ALLOWED ONTOLOGY SCHEMA:\n" +
+            $"{ontologySchemaJson}\n\n" +
+            "OUTPUT FORMAT:\n" +
+            "You MUST return a single valid JSON object with exactly two keys: \"Entities\" and \"Relationships\".\n" +
+            "Every entity object MUST have these fields: \"Name\" (string, exact text from document), \"Type\" (string, must match one of the allowed Types from the schema), \"Description\" (string, 1-5 words), \"ConfidenceScore\" (number 0.0 to 1.0).\n" +
+            "Every relationship object MUST have these fields: \"SourceEntityName\" (string, must match an extracted Entity Name), \"TargetEntityName\" (string, must match an extracted Entity Name), \"RelationType\" (string, must match one of the allowed RelationTypes from the schema), \"ConfidenceScore\" (number 0.0 to 1.0).\n\n" +
+            "EXAMPLE OUTPUT:\n" +
+            "{\n" +
+            "  \"Entities\": [\n" +
+            "    { \"Name\": \"Alessandro Volta\", \"Type\": \"Person\", \"Description\": \"Italian physicist\", \"ConfidenceScore\": 0.95 },\n" +
+            "    { \"Name\": \"Volt\", \"Type\": \"Unit\", \"Description\": \"Unit of electric potential\", \"ConfidenceScore\": 0.99 }\n" +
+            "  ],\n" +
+            "  \"Relationships\": [\n" +
+            "    { \"SourceEntityName\": \"Volt\", \"TargetEntityName\": \"Alessandro Volta\", \"RelationType\": \"NAMED_AFTER\", \"ConfidenceScore\": 0.9 }\n" +
+            "  ]\n" +
+            "}\n\n" +
+            "RULES:\n" +
+            "1. Return ONLY the raw JSON. NO markdown code blocks (```json), NO explanations, NO conversational text.\n" +
+            "2. Extract ALL relevant entities and relationships present in the text. Do not be lazy.\n" +
+            "3. If absolutely nothing relevant is found, return {\"Entities\":[], \"Relationships\":[]}.\n" +
+            "4. Use the exact names/phrases as they appear in the text for entity Names.";
 
         private static string BuildGraphAnswerSystemPrompt(KnowledgeGraph context)
         {
@@ -203,13 +432,98 @@ namespace InstanciumLens.AI.Services
 
         private static string CleanLlmJsonOutput(string text)
         {
-            var start = text.IndexOf('{');
-            var end = text.LastIndexOf('}');
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return text;
+            }
+
+            text = text.Trim();
+            if (text.StartsWith("```json", StringComparison.OrdinalIgnoreCase))
+            {
+                text = text["```json".Length..].TrimStart();
+            }
+            else if (text.StartsWith("```", StringComparison.OrdinalIgnoreCase))
+            {
+                text = text["```".Length..].TrimStart();
+            }
+
+            if (text.EndsWith("```"))
+            {
+                text = text[..^3].TrimEnd();
+            }
+
+            int start = text.IndexOf('{');
+            int end = text.LastIndexOf('}');
             if (start >= 0 && end > start)
             {
                 return text.Substring(start, end - start + 1);
             }
+
+            if (start >= 0)
+            {
+                return text[start..];
+            }
+
             return text;
+        }
+
+        private static string SanitizeJsonKeys(string json)
+        {
+            return Regex.Replace(json, @"(?<="")\s+(?=""\s*:)", "");
+        }
+
+        private static string RepairTruncatedJson(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return json;
+            }
+
+            int openBraces = 0;
+            int openBrackets = 0;
+            bool inString = false;
+            bool escape = false;
+
+            foreach (char symbol in json)
+            {
+                if (escape)
+                {
+                    escape = false;
+                    continue;
+                }
+                if (symbol == '\\')
+                {
+                    escape = true;
+                    continue;
+                }
+                if (symbol == '"')
+                {
+                    inString = !inString;
+                    continue;
+                }
+
+                if (!inString)
+                {
+                    if (symbol == '{') openBraces++;
+                    else if (symbol == '}') openBraces--;
+                    else if (symbol == '[') openBrackets++;
+                    else if (symbol == ']') openBrackets--;
+                }
+            }
+
+            string repaired = json.TrimEnd();
+            while (openBrackets > 0)
+            {
+                repaired += "]";
+                openBrackets--;
+            }
+            while (openBraces > 0)
+            {
+                repaired += "}";
+                openBraces--;
+            }
+
+            return Regex.Replace(repaired, @",\s*([\]}])", "$1");
         }
 
         private sealed class LlmOntologyResponse

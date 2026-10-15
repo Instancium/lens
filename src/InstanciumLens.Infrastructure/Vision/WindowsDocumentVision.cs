@@ -18,8 +18,10 @@ namespace InstanciumLens.Infrastructure.Vision
 {
     public class WindowsDocumentVision : IDocumentVision
     {
+        private const double TargetDpi = 300.0;
         private readonly OcrEngine _ocrEngine;
         private readonly ILogger<WindowsDocumentVision> _logger;
+        private readonly PdfTextLayerReader _textLayerReader = new();
 
         public WindowsDocumentVision(ILogger<WindowsDocumentVision>? logger = null)
         {
@@ -47,11 +49,13 @@ namespace InstanciumLens.Infrastructure.Vision
             string fileName = Path.GetFileName(filePath);
             int pageCount = (int)pdfDoc.PageCount;
             var documentStopwatch = Stopwatch.StartNew();
+
             _logger.LogInformation("Pass 1 started for {FileName}: {PageCount} pages", fileName, pageCount);
+
             for (uint i = 0; i < pdfDoc.PageCount; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                DocumentNode node = await RenderPageAsync(pdfDoc, i, filePath, fileName);
+                DocumentNode node = await BuildPageNodeAsync(pdfDoc, i, filePath, fileName);
                 documentNodes.Add(node);
                 _logger.LogDebug(
                     "Pass 1 page {PageNumber}/{PageCount} extracted for {FileName}",
@@ -86,14 +90,65 @@ namespace InstanciumLens.Infrastructure.Vision
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            return await RenderPageAsync(pdfDoc, (uint)pageNumber - 1, filePath, Path.GetFileName(filePath));
+            return await BuildPageNodeAsync(pdfDoc, (uint)pageNumber - 1, filePath, Path.GetFileName(filePath));
+        }
+
+        public async Task<int> GetPageCountAsync(string filePath, CancellationToken cancellationToken = default)
+        {
+            if (!File.Exists(filePath))
+            {
+                throw new FileNotFoundException($"The file was not found: {filePath}");
+            }
+
+            StorageFile file = await StorageFile.GetFileFromPathAsync(Path.GetFullPath(filePath));
+            PdfDocument pdfDoc = await PdfDocument.LoadFromFileAsync(file);
+            return (int)pdfDoc.PageCount;
+        }
+
+        private async Task<DocumentNode> BuildPageNodeAsync(PdfDocument pdfDoc, uint pageIndex, string filePath, string fileName)
+        {
+            string? textLayer = null;
+            try
+            {
+                textLayer = await _textLayerReader.ReadPageTextAsync(filePath, (int)pageIndex + 1);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Page {PageNumber} of {FileName}: text layer read failed, falling back to OCR.",
+                    (int)pageIndex + 1,
+                    fileName);
+            }
+
+            if (!string.IsNullOrWhiteSpace(textLayer) && textLayer.Length >= PdfTextLayerReader.MinimumUsefulTextLength)
+            {
+                _logger.LogDebug(
+                    "Page {PageNumber} of {FileName}: using embedded text layer ({Length} chars).",
+                    (int)pageIndex + 1,
+                    fileName,
+                    textLayer.Length);
+                return new DocumentNode
+                {
+                    FilePath = filePath,
+                    FileName = fileName,
+                    PageNumber = (int)pageIndex + 1,
+                    RawText = textLayer
+                };
+            }
+
+            _logger.LogDebug(
+                "Page {PageNumber} of {FileName}: text layer missing, falling back to OCR.",
+                (int)pageIndex + 1,
+                fileName);
+            return await RenderPageAsync(pdfDoc, pageIndex, filePath, fileName);
         }
 
         private async Task<DocumentNode> RenderPageAsync(PdfDocument pdfDoc, uint pageIndex, string filePath, string fileName)
         {
             using PdfPage page = pdfDoc.GetPage(pageIndex);
             using var stream = new InMemoryRandomAccessStream();
-            await page.RenderToStreamAsync(stream);
+            await page.RenderToStreamAsync(stream, BuildRenderOptions(page));
             BitmapDecoder decoder = await BitmapDecoder.CreateAsync(stream);
             SoftwareBitmap softwareBitmap = await decoder.GetSoftwareBitmapAsync();
             OcrResult ocrResult = await _ocrEngine.RecognizeAsync(softwareBitmap);
@@ -106,17 +161,13 @@ namespace InstanciumLens.Infrastructure.Vision
             };
         }
 
-
-        public async Task<int> GetPageCountAsync(string filePath, CancellationToken cancellationToken = default)
+        private static PdfPageRenderOptions BuildRenderOptions(PdfPage page)
         {
-            if (!File.Exists(filePath))
+            return new PdfPageRenderOptions
             {
-                throw new FileNotFoundException($"The file was not found: {filePath}");
-            }
-
-            StorageFile file = await StorageFile.GetFileFromPathAsync(Path.GetFullPath(filePath));
-            PdfDocument pdfDoc = await PdfDocument.LoadFromFileAsync(file);
-            return (int)pdfDoc.PageCount;
+                DestinationWidth = (uint)(page.Size.Width * TargetDpi / 72.0),
+                DestinationHeight = (uint)(page.Size.Height * TargetDpi / 72.0)
+            };
         }
     }
 }
