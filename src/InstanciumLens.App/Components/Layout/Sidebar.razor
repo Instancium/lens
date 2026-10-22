@@ -1,13 +1,14 @@
 ﻿@* Components/Layout/Sidebar.razor *@
+@using System.Reflection
+@using System.Text.Json
 @using InstanciumLens.AI.Configuration
 @using InstanciumLens.AI.Contracts
 @using InstanciumLens.AI.Services
 @using InstanciumLens.Core.Interfaces
 @using InstanciumLens.Core.Models
 @using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Extensions.Logging
 @using Microsoft.Maui.Storage
-@using System.Reflection
-@using System.Text.Json
 @inject GatewayConnectionService ConnectionService
 @inject GatewaySettings GatewaySettings
 @inject NavigationManager NavManager
@@ -280,6 +281,9 @@
         _ = InvokeAsync(LoadProfilesAsync);
     }
 
+    [Inject]
+    private Microsoft.Extensions.Logging.ILogger<Sidebar> Logger { get; set; } = default!;
+
     private async Task LoadProfilesAsync()
     {
         profiles.Clear();
@@ -302,10 +306,9 @@
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Sidebar manifest read failed: {ex.Message}");
+                Logger.LogError(ex, "Sidebar manifest read failed for {FolderPath}", folder);
             }
         }
-
         await InvokeAsync(StateHasChanged);
     }
 

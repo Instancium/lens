@@ -174,7 +174,9 @@ namespace InstanciumLens.Core.Services
                     state.CurrentPhase = ProcessingPhase.Pass2_EntityResolution;
                     reporter.SetMessage($"Pass 2 · {plan.FileName} · extracting facts");
                     reporter.Report(force: true);
+
                     int pass2Done = plan.Pages.Count(page => page.Pass2Completed && page.SchemaHash == schemaHash);
+                    var documentEntities = new List<GraphEntity>();
                     for (int pageIndex = 0; pageIndex < plan.Pages.Count; pageIndex++)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
@@ -185,9 +187,9 @@ namespace InstanciumLens.Core.Services
                             reporter.Report(force: false);
                             continue;
                         }
-
                         var pageStopwatch = Stopwatch.StartNew();
-                        KnowledgeGraph segment = await _aiService.ExtractEntitiesAsync(pageNodes[pageIndex], ontologySchemaJson, cancellationToken);
+                        KnowledgeGraph segment = await _aiService.ExtractEntitiesAsync(
+                            pageNodes[pageIndex], ontologySchemaJson, cancellationToken);
                         estimator.RecordPass2Page(pageStopwatch.Elapsed.TotalSeconds);
                         page.SchemaHash = schemaHash;
                         await repository.SavePageSegmentAsync(segment, page, cancellationToken);
@@ -195,13 +197,35 @@ namespace InstanciumLens.Core.Services
                         pass2Done++;
                         state.ExtractedEntities += segment.Entities.Count;
                         state.ExtractedRelationships += segment.Relationships.Count;
+                        documentEntities.AddRange(segment.Entities);
                         state.Pass2ProcessedPages = pass2Base + pass2Done;
                         reporter.Report(force: false);
                     }
 
+                    // Pass 2.5: document-level relation inference between already-extracted entities.
+                    if (documentEntities.Count >= 2)
+                    {
+                        reporter.SetMessage($"Pass 2.5 · {plan.FileName} · inferring relationships");
+                        reporter.Report(force: true);
+                        string combinedText = string.Join(
+                            "\n\n",
+                            pageNodes.Where(p => !string.IsNullOrWhiteSpace(p.RawText)).Select(p => p.RawText));
+                        List<GraphRelationship> inferredRelations = await _aiService.InferRelationsAsync(
+                            documentEntities, combinedText, ontologySchemaJson, cancellationToken);
+                        if (inferredRelations.Count > 0)
+                        {
+                            var relationOnlySegment = new KnowledgeGraph
+                            {
+                                Entities = new List<GraphEntity>(),
+                                Relationships = inferredRelations,
+                            };
+                            await repository.SaveGraphSegmentAsync(relationOnlySegment, cancellationToken);
+                            state.ExtractedRelationships += inferredRelations.Count;
+                        }
+                    }
+
                     pass1Base += plan.Pages.Count;
                     pass2Base += plan.Pages.Count;
-
                     state.CurrentPhase = ProcessingPhase.Pass3_GraphBuilding;
                     reporter.SetMessage($"Pass 3 · {plan.FileName} · committing verified segments");
                     reporter.Report(force: true);

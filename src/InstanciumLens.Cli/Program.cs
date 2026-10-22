@@ -1,15 +1,16 @@
-﻿using System;
+﻿using InstanciumLens.AI.Configuration;
+using InstanciumLens.AI.Services;
+using InstanciumLens.Core.Models;
+using InstanciumLens.Infrastructure.Vision;
+using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
-using InstanciumLens.AI.Configuration;
-using InstanciumLens.AI.Services;
-using InstanciumLens.Core.Models;
-using InstanciumLens.Infrastructure.Vision;
-using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.Extensions.Logging;
 using Windows.Data.Pdf;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
@@ -44,26 +45,45 @@ namespace InstanciumLens.Cli
             Console.WriteLine("=== InstanciumLens CLI - Step-by-Step Diagnostics ===");
             Console.WriteLine();
 
-            if (args.Length == 0)
+            if (args.Length > 0 && (args[0] == "--help" || args[0] == "-h"))
             {
-                Console.WriteLine("Usage: InstanciumLens.Cli <path-to-pdf> [gateway-repo-id] [gateway-base-url] [gateway-api-key]");
-                Console.WriteLine("Example: InstanciumLens.Cli engin-test.pdf qwen2.5-7b-instruct http://localhost:5000 secret-key");
-                Console.WriteLine("API key can also be provided via INSTANCIUM_GATEWAY_API_KEY environment variable.");
-                return 1;
+                Console.WriteLine("Usage: InstanciumLens.Cli [path-to-pdf] [gateway-repo-id] [gateway-base-url] [gateway-api-key]");
+                Console.WriteLine("If no arguments are provided, settings are loaded from appsettings.json.");
+                return 0;
             }
 
-            string pdfPath = ResolvePdfPath(args[0]);
-            if (!File.Exists(pdfPath))
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(AppContext.BaseDirectory)
+                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
+                .AddEnvironmentVariables()
+                .Build();
+
+            var cliSettings = configuration.GetSection("Cli");
+
+            string pdfPath = args.Length > 0
+                ? ResolvePdfPath(args[0])
+                : ResolvePdfPath(cliSettings["PdfPath"] ?? "engin-test.pdf");
+
+            if (string.IsNullOrWhiteSpace(pdfPath) || !File.Exists(pdfPath))
             {
                 Console.WriteLine($"ERROR: File not found: {pdfPath}");
+                Console.WriteLine("Please check the 'Cli:PdfPath' in appsettings.json or provide a valid path as the first argument.");
                 return 1;
             }
 
-            string? repoId = args.Length > 1 ? args[1] : "qwen3-vl-8b-instruct";
-            string baseUrl = args.Length > 2 ? args[2] : "http://localhost:5000";
+            string repoId = args.Length > 1
+                ? args[1]
+                : (cliSettings["Gateway:ActiveRepoId"] ?? "qwen3-vl-8b-instruct");
+
+            string baseUrl = args.Length > 2
+                ? args[2]
+                : (cliSettings["Gateway:BaseUrl"] ?? "http://localhost:5000");
+
             string apiKey = args.Length > 3
                 ? args[3]
-                : Environment.GetEnvironmentVariable("INSTANCIUM_GATEWAY_API_KEY") ?? "ChangeMeSuperSecureAdminApiKey123";
+                : (cliSettings["Gateway:ApiKey"]
+                   ?? Environment.GetEnvironmentVariable("INSTANCIUM_GATEWAY_API_KEY")
+                   ?? "ChangeMeSuperSecureAdminApiKey123");
 
             using ILoggerFactory loggerFactory = LoggerFactory.Create(builder =>
             {
@@ -278,15 +298,13 @@ namespace InstanciumLens.Cli
                 Console.WriteLine("Sending to gateway for extraction...");
 
                 KnowledgeGraph segment = await aiService.ExtractEntitiesAsync(pageNode, ProbeSchemaJson);
-
                 Console.WriteLine();
                 Console.WriteLine($"Entities: {segment.Entities.Count}");
                 foreach (GraphEntity entity in segment.Entities.Take(15))
                 {
                     Console.WriteLine($"  [{entity.Type}] {entity.Name} (confidence {entity.ConfidenceScore:F2})");
                 }
-
-                Console.WriteLine($"Relationships: {segment.Relationships.Count}");
+                Console.WriteLine($"Relationships (Pass 2): {segment.Relationships.Count}");
                 Dictionary<string, string> nameById = segment.Entities.ToDictionary(e => e.Id, e => e.Name);
                 foreach (GraphRelationship relationship in segment.Relationships.Take(15))
                 {
@@ -298,6 +316,36 @@ namespace InstanciumLens.Cli
                         : relationship.TargetEntityId;
                     Console.WriteLine($"  {sourceName} -{relationship.RelationType}-> {targetName}");
                 }
+
+                // Pass 2.5: document-level relation inference
+                // Pass 2.5: document-level relation inference
+                if (segment.Entities.Count >= 2)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("=== Pass 2.5: Inferring relationships between extracted entities ===");
+                    List<GraphRelationship> inferredRelations = await aiService.InferRelationsAsync(
+                        segment.Entities,
+                        pageNode.RawText,
+                        ProbeSchemaJson);
+                    Console.WriteLine($"Inferred relationships: {inferredRelations.Count}");
+
+                    // Diagnostic: dump entity names for debugging
+                    Console.WriteLine("Available entities for lookup:");
+                    foreach (var entity in segment.Entities)
+                    {
+                        Console.WriteLine($"  [{entity.Id}] {entity.Name} ({entity.Type})");
+                    }
+
+                    foreach (GraphRelationship relationship in inferredRelations.Take(15))
+                    {
+                        string sourceName = segment.Entities.FirstOrDefault(e => e.Id == relationship.SourceEntityId)?.Name
+                            ?? relationship.SourceEntityId;
+                        string targetName = segment.Entities.FirstOrDefault(e => e.Id == relationship.TargetEntityId)?.Name
+                            ?? relationship.TargetEntityId;
+                        Console.WriteLine($"  {sourceName} -{relationship.RelationType}-> {targetName} (confidence {relationship.Weight:F2})");
+                    }
+                }
+
             }
             catch (HttpRequestException ex) when (ex.Message.Contains("401"))
             {

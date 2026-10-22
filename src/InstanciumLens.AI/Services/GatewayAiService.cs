@@ -27,6 +27,169 @@ namespace InstanciumLens.AI.Services
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
+
+
+        /// <summary>
+        /// Pass 2.5: infers relationships between already-extracted entities.
+        /// Narrows the LLM task from "invent everything" to "connect the given entities",
+        /// which measurably improves recall on 8B-class models.
+        /// </summary>
+        public async Task<List<GraphRelationship>> InferRelationsAsync(
+            IReadOnlyList<GraphEntity> entities,
+            string combinedText,
+            string ontologySchemaJson,
+            CancellationToken cancellationToken = default)
+        {
+            if (entities == null) throw new ArgumentNullException(nameof(entities));
+            if (string.IsNullOrWhiteSpace(combinedText))
+            {
+                return new List<GraphRelationship>();
+            }
+            if (entities.Count < 2)
+            {
+                return new List<GraphRelationship>();
+            }
+
+            string systemPrompt = BuildRelationInferenceSystemPrompt(ontologySchemaJson);
+            string userPrompt = BuildRelationInferenceUserPrompt(entities, combinedText);
+            string response = await CompleteAsync(systemPrompt, userPrompt, cancellationToken);
+
+            // Diagnostic: log raw response to understand model behavior
+            //_logger.LogInformation("Pass 2.5 raw response (first 500 chars): {RawResponse}",
+            //    response.Length > 500 ? response[..500] : response);
+
+            return ParseRelationInferenceResponse(response, entities);
+        }
+
+        private static string BuildRelationInferenceSystemPrompt(string ontologySchemaJson) =>
+            "You are a knowledge graph relationship extractor. " +
+            "TASK: Given a list of entities (already extracted) and a text, identify ALL relationships between these entities.\n\n" +
+            "ALLOWED ONTOLOGY SCHEMA:\n" +
+            $"{ontologySchemaJson}\n\n" +
+            "CRITICAL RULES:\n" +
+            "1. Do NOT create new entities. Only use the provided entity names.\n" +
+            "2. Every relationship must be supported by evidence in the text.\n" +
+            "3. Use ONLY the RelationTypes listed in the schema above.\n" +
+            "4. If no relationship exists between two entities, do NOT invent one.\n" +
+            "5. Output MUST be a single valid JSON object with exactly one key \"Relationships\".\n" +
+            "6. Every relationship object MUST have these fields: \"SourceEntityName\" (string, exact name from provided list), " +
+            "\"TargetEntityName\" (string, exact name from provided list), \"RelationType\" (string, from schema), " +
+            "\"ConfidenceScore\" (number 0.0..1.0), \"EvidenceText\" (string, exact quote from text).\n\n" +
+            "EXAMPLE OUTPUT:\n" +
+            "{\n" +
+            "  \"Relationships\": [\n" +
+            "    { \"SourceEntityName\": \"Volt\", \"TargetEntityName\": \"Alessandro Volta\", \"RelationType\": \"NAMED_AFTER\", \"ConfidenceScore\": 0.98, \"EvidenceText\": \"The volt is named after Alessandro Volta\" },\n" +
+            "    { \"SourceEntityName\": \"Alessandro Volta\", \"TargetEntityName\": \"Electric Voltage\", \"RelationType\": \"DISCOVERED\", \"ConfidenceScore\": 0.85, \"EvidenceText\": \"who invented the electric pile\" }\n" +
+            "  ]\n" +
+            "}\n\n" +
+            "If no relationships can be inferred, return: {\"Relationships\": []}";
+
+        private static string BuildRelationInferenceUserPrompt(
+            IReadOnlyList<GraphEntity> entities,
+            string combinedText)
+        {
+            string entityList = string.Join(
+                "\n",
+                entities.Select((e, i) => $"{i + 1}. {e.Name} ({e.Type})"));
+            return "ENTITIES (use ONLY these names):\n" +
+                   $"{entityList}\n\n" +
+                   "TEXT TO ANALYZE:\n" +
+                   $"{combinedText}\n\n" +
+                   "Extract all relationships between these entities. Return JSON.";
+        }
+
+        private List<GraphRelationship> ParseRelationInferenceResponse(
+            string response,
+            IReadOnlyList<GraphEntity> entities)
+        {
+            string cleaned = CleanLlmJsonOutput(response);
+            cleaned = RepairTruncatedJson(cleaned);
+            var result = new List<GraphRelationship>();
+
+            var idByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (GraphEntity entity in entities)
+            {
+                if (!string.IsNullOrWhiteSpace(entity.Name))
+                {
+                    idByName[entity.Name] = entity.Id;
+                }
+            }
+
+            _logger.LogInformation(
+                "Pass 2.5: {EntityCount} entities in lookup, cleaned JSON length: {Length}",
+                idByName.Count, cleaned.Length);
+
+            try
+            {
+                using JsonDocument doc = JsonDocument.Parse(cleaned);
+                JsonElement root = doc.RootElement;
+                if (!root.TryGetProperty("Relationships", out JsonElement relationsElement)
+                    || relationsElement.ValueKind != JsonValueKind.Array)
+                {
+                    _logger.LogWarning("Pass 2.5: no Relationships array found in parsed JSON");
+                    return result;
+                }
+
+                int arrayLength = relationsElement.GetArrayLength();
+                _logger.LogInformation("Pass 2.5: parsing {Count} relationships from array", arrayLength);
+
+                foreach (JsonElement rel in relationsElement.EnumerateArray())
+                {
+                    string? sourceName = GetString(rel, "SourceEntityName", "SourceEntityId", "source");
+                    string? targetName = GetString(rel, "TargetEntityName", "TargetEntityId", "target");
+                    string? relationType = GetString(rel, "RelationType", "relation_type", "type");
+
+                    if (string.IsNullOrWhiteSpace(sourceName)
+                        || string.IsNullOrWhiteSpace(targetName)
+                        || string.IsNullOrWhiteSpace(relationType))
+                    {
+                        _logger.LogWarning(
+                            "Pass 2.5: skipping relationship with missing fields: source={Source}, target={Target}, type={Type}",
+                            sourceName, targetName, relationType);
+                        continue;
+                    }
+
+                    if (!idByName.TryGetValue(sourceName, out string? sourceId))
+                    {
+                        _logger.LogWarning(
+                            "Pass 2.5: source entity '{Name}' not found in lookup (available: {Names})",
+                            sourceName, string.Join(", ", idByName.Keys));
+                        continue;
+                    }
+                    if (!idByName.TryGetValue(targetName, out string? targetId))
+                    {
+                        _logger.LogWarning(
+                            "Pass 2.5: target entity '{Name}' not found in lookup (available: {Names})",
+                            targetName, string.Join(", ", idByName.Keys));
+                        continue;
+                    }
+
+                    double confidence = GetDouble(rel, 0.8, "ConfidenceScore", "confidence", "score");
+                    string? evidence = GetString(rel, "EvidenceText", "evidence", "quote");
+                    result.Add(new GraphRelationship
+                    {
+                        SourceEntityId = sourceId,
+                        TargetEntityId = targetId,
+                        RelationType = relationType,
+                        Weight = confidence,
+                        Description = evidence ?? string.Empty,
+                    });
+                }
+
+                _logger.LogInformation("Pass 2.5: parsed {Count} relationships successfully", result.Count);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Pass 2.5: JSON parse failed. Cleaned length: {Length}, first 300 chars: {Head}",
+                    cleaned.Length, cleaned.Length > 300 ? cleaned[..300] : cleaned);
+            }
+
+            return result;
+        }
+
+
         public async Task<KnowledgeGraph> ExtractEntitiesAsync(
             DocumentNode document,
             string ontologySchemaJson,

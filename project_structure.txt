@@ -114,6 +114,11 @@
 |    |    +--- MainPage.xaml
 |    |    +--- MainPage.xaml.cs
 |    |    \--- MauiProgram.cs
+|    +--- InstanciumLens.Cli
+|    |    +--- DiagnosticTests.cs
+|    |    +--- engin-test.pdf
+|    |    +--- InstanciumLens.Cli.csproj
+|    |    \--- Program.cs
 |    +--- InstanciumLens.Core
 |    |    +--- Interfaces
 |    |    |    +--- IAppStateService.cs
@@ -154,6 +159,7 @@
 |         |    +--- LocalFolderAnalyzer.cs
 |         |    \--- LocalFolderManifestService.cs
 |         +--- Vision
+|         |    +--- PdfTextLayerReader.cs
 |         |    \--- WindowsDocumentVision.cs
 |         \--- InstanciumLens.Infrastructure.csproj
 +--- tests

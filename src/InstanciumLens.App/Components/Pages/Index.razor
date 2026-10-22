@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @using InstanciumLens.App.Components.Progress
 @using InstanciumLens.Core.Models
 @using Microsoft.Extensions.Logging
@@ -173,7 +173,6 @@
     private async Task LoadGraphsFromManifest()
     {
         if (string.IsNullOrEmpty(selectedFolderPath)) return;
-
         try
         {
             string manifestPath = System.IO.Path.Combine(selectedFolderPath, ".instancium", "manifest.json");
@@ -187,7 +186,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error reading manifest: {ex.Message}");
+            Logger.LogError(ex, "Failed to read manifest from {FolderPath}", selectedFolderPath);
             graphs.Clear();
         }
     }

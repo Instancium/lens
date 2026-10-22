@@ -20,5 +20,7 @@ namespace InstanciumLens.Core.Interfaces
 
         /// <summary>Streams a grounded answer with numbered [n] citation markers driven by the citation context.</summary>
         IAsyncEnumerable<string> AnswerQueryStreamAsync(string userQuery, CitationContext citationContext, CancellationToken cancellationToken = default);
+
+        Task<List<GraphRelationship>> InferRelationsAsync(IReadOnlyList<GraphEntity> entities, string combinedText, string ontologySchemaJson, CancellationToken cancellationToken = default);
     }
 }
