@@ -76,7 +76,7 @@ namespace InstanciumLens.AI.Services
             CancellationToken cancellationToken = default)
         {
             ValidateArguments(sessionId, messages);
-            PendingRequest pending = new();
+            PendingRequest pending = new() { TotalTurns = messages.Count };
             await RunCoreAsync(sessionId, repoId, messages, ephemeral, pending, cancellationToken);
             return await pending.Completion.Task;
         }
@@ -93,9 +93,13 @@ namespace InstanciumLens.AI.Services
             Channel<string> channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
             {
                 SingleReader = true,
-                SingleWriter = true
+                SingleWriter = true,
             });
-            PendingRequest pending = new() { Stream = channel };
+            PendingRequest pending = new()
+            {
+                Stream = channel,
+                TotalTurns = messages.Count,
+            };
             _ = RunCoreAsync(sessionId, repoId, messages, ephemeral, pending, cancellationToken);
             await foreach (string token in channel.Reader.ReadAllAsync(cancellationToken))
             {
@@ -150,12 +154,12 @@ namespace InstanciumLens.AI.Services
         }
 
         private async Task RunCoreAsync(
-            string sessionId,
-            string repoId,
-            IReadOnlyList<GatewayChatMessage> messages,
-            bool ephemeral,
-            PendingRequest pending,
-            CancellationToken cancellationToken)
+              string sessionId,
+              string repoId,
+              IReadOnlyList<GatewayChatMessage> messages,
+              bool ephemeral,
+              PendingRequest pending,
+              CancellationToken cancellationToken)
         {
             _pending[sessionId] = pending;
             try
@@ -169,26 +173,25 @@ namespace InstanciumLens.AI.Services
                     {
                         foreach (GatewayChatMessage message in messages)
                         {
-                            await _connection.InvokeAsync("SendPromptDelta", sessionId, message, cancellationToken);
+                            await _connection.InvokeAsync(
+                                "SendPromptDelta", sessionId, message, cancellationToken);
                         }
-
                         await pending.Completion.Task.WaitAsync(cancellationToken);
                         return;
                     }
                     catch (Exception ex) when (attempt == 0 && IsSessionEvicted(ex))
                     {
                         attempt++;
-                        PendingRequest retried = new() { Stream = pending.Stream };
+                        PendingRequest retried = new()
+                        {
+                            Stream = pending.Stream,
+                            TotalTurns = pending.TotalTurns,
+                        };
                         pending = retried;
                         _pending[sessionId] = retried;
                         await JoinAsync(sessionId, repoId, ephemeral, cancellationToken);
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                pending.Completion.TrySetException(ex);
-                pending.Stream?.Writer.TryComplete(ex);
             }
             finally
             {
@@ -207,6 +210,8 @@ namespace InstanciumLens.AI.Services
             }
         }
 
+        // Each SendPromptDelta is a separate inference turn with its own IsDone marker;
+        // only the final turn's tokens belong to the caller, earlier turns are discarded.
         private void HandleTokenDelta(SessionTokenDelta delta)
         {
             if (delta == null || !_pending.TryGetValue(delta.SessionId, out PendingRequest? pending))
@@ -214,22 +219,42 @@ namespace InstanciumLens.AI.Services
                 return;
             }
 
+            bool isLastTurn = pending.CompletedTurns == pending.TotalTurns - 1;
+            if (delta.IsDone)
+            {
+                if (isLastTurn)
+                {
+                    _pending.TryRemove(delta.SessionId, out _);
+                    AppendToPending(pending, delta.Content);
+                    pending.Stream?.Writer.TryComplete(null);
+                    pending.Completion.TrySetResult(pending.Buffer.ToString());
+                }
+                else
+                {
+                    pending.CompletedTurns++;
+                    pending.Buffer.Clear();
+                }
+                return;
+            }
+
+            if (isLastTurn)
+            {
+                AppendToPending(pending, delta.Content);
+            }
+        }
+
+        private static void AppendToPending(PendingRequest pending, string content)
+        {
             if (pending.Stream != null)
             {
-                pending.Stream.Writer.TryWrite(delta.Content);
+                pending.Stream.Writer.TryWrite(content);
             }
             else
             {
-                pending.Buffer.Append(delta.Content);
-            }
-
-            if (delta.IsDone)
-            {
-                _pending.TryRemove(delta.SessionId, out _);
-                pending.Stream?.Writer.TryComplete(null);
-                pending.Completion.TrySetResult(pending.Buffer.ToString());
+                pending.Buffer.Append(content);
             }
         }
+
 
         private void HandleError(string message)
         {
@@ -281,9 +306,11 @@ namespace InstanciumLens.AI.Services
         private sealed class PendingRequest
         {
             public StringBuilder Buffer { get; } = new();
-
             public Channel<string>? Stream { get; init; }
-
+            // Each SendPromptDelta is a separate inference turn with its own IsDone marker;
+            // only the final turn's tokens belong to the caller, earlier turns are discarded.
+            public int TotalTurns { get; set; } = 1;
+            public int CompletedTurns { get; set; }
             public TaskCompletionSource<string> Completion { get; } =
                 new(TaskCreationOptions.RunContinuationsAsynchronously);
         }

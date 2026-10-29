@@ -5,6 +5,7 @@
 
 # AI models folder
 storage/models/
+builder/
 
 # Native runtime binaries (MAINTAINER ONLY)
 # The .runtimes/ folder contains llama.cpp native binaries for packaging.

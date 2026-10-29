@@ -61,7 +61,6 @@ namespace InstanciumLens.Infrastructure.Tests
     public sealed class FakeAiService : ILocalModelService
     {
         private const string FakeAnswerToken = "fake";
-
         private readonly IReadOnlyCollection<int> _failingPages;
         private readonly int _entitiesPerPage;
 
@@ -72,6 +71,7 @@ namespace InstanciumLens.Infrastructure.Tests
         }
 
         public List<int> ExtractedPages { get; } = new();
+        public int InferRelationsCallCount { get; private set; }
 
         public Task<KnowledgeGraph> ExtractEntitiesAsync(
             DocumentNode document,
@@ -84,7 +84,6 @@ namespace InstanciumLens.Infrastructure.Tests
             {
                 throw new InvalidOperationException($"Simulated gateway failure on page {document.PageNumber}.");
             }
-
             var graph = new KnowledgeGraph();
             for (int i = 0; i < _entitiesPerPage; i++)
             {
@@ -129,6 +128,16 @@ namespace InstanciumLens.Infrastructure.Tests
                     DatabaseFile = "knowledge_graph_fake_profile.db"
                 },
                 "{}"));
+
+        public Task<List<GraphRelationship>> InferRelationsAsync(
+            IReadOnlyList<GraphEntity> entities,
+            string combinedText,
+            string ontologySchemaJson,
+            CancellationToken cancellationToken = default)
+        {
+            InferRelationsCallCount++;
+            return Task.FromResult(new List<GraphRelationship>());
+        }
     }
 
     public sealed class FakeGraphRepository : IGraphRepository
