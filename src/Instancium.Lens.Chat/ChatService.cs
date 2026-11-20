@@ -1,5 +1,5 @@
 using System.Text;
-using Instancium.InstantAIGate.Client;
+using InstantAIGate.Client.Chat;
 using Instancium.Lens.Core;
 using Microsoft.Extensions.Logging;
 

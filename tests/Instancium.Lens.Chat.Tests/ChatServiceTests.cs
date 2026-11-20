@@ -1,4 +1,5 @@
-using Instancium.InstantAIGate.Client;
+using InstantAIGate.Client.Chat;
+using InstantAIGate.Core.Dtos.Inference;
 using Instancium.Lens.Core;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -135,20 +136,23 @@ internal sealed class FakeChatClient : IChatClient
     public string Response { get; set; } = "Answer [1]";
     public Exception? Exception { get; set; }
     public string? LastPrompt { get; private set; }
+    public string SessionId { get; } = "fake-session";
 
     public Task<string> CompleteAsync(
-        string prompt,
+        ChatMessage message,
         CancellationToken cancellationToken = default)
     {
-        LastPrompt = prompt;
+        LastPrompt = message.ToString() ?? string.Empty;
         return Exception is not null
             ? Task.FromException<string>(Exception)
             : Task.FromResult(Response);
     }
 
     public Task StreamAsync(
-        string prompt,
+        ChatMessage message,
         Func<string, Task> onToken,
         CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

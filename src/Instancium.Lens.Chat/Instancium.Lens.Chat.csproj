@@ -7,12 +7,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>true</IsPackable>
-    <Version>1.2.5</Version>
+    <Version>1.3.0</Version>
     <Description>RAG chat orchestration with grounded citations for Instancium Lens.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Instancium.Lens.Core/Instancium.Lens.Core.csproj" />
-    <ProjectReference Include="../Instancium.InstantAIGate.Client/Instancium.InstantAIGate.Client.csproj" />
+    <PackageReference Include="InstantAIGate.Client" Version="1.6.2" />
     <PackageReference Include="Instancium.Vectra" Version="1.1.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
   </ItemGroup>

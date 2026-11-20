@@ -1,15 +1,19 @@
 using Instancium.Chunker;
 using Instancium.FileParser;
-using Instancium.InstantAIGate.Client;
 using Instancium.Lens.Chat;
 using Instancium.Lens.Ingestion;
 using Instancium.Lens.App.Services;
 using Instancium.Vectra.Core.Contracts;
 using Instancium.Vectra.Core.Models;
 using Instancium.Vectra.Search;
+using InstantAIGate.Client.Chat;
+using InstantAIGate.Client.Configuration;
+using InstantAIGate.Client.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
 
 namespace Instancium.Lens.App;
 
@@ -65,19 +69,22 @@ public static class MauiProgram
         services.AddSingleton<AppState>();
     }
 
-    /// <summary>Wires the InstantAIGate client plane: connection, chat and the Vectra embedding seam.</summary>
+    /// <summary>
+    /// Wires the SDK gateway plane and the Vectra embedding bridge.
+    /// WHY: transport, session strategies and diagnostics are owned by the SDK packages;
+    /// the composition root only binds configuration and selects the context policy.
+    /// </summary>
     private static void RegisterGateway(IServiceCollection services, IConfiguration configuration)
     {
-        GatewayOptions options = configuration.GetSection("Gateway").Get<GatewayOptions>()
-            ?? new GatewayOptions();
-        services.AddSingleton(options);
-        services.AddSingleton<IGatewayConnection, GatewayConnection>();
-        services.AddSingleton<IChatClientFactory, GatewayChatClientFactory>();
-        services.AddSingleton<IChatClient>(sp =>
-            sp.GetRequiredService<IChatClientFactory>().Create(options.ContextPolicy));
-        // GatewayEmbeddingProvider implements the Vectra IEmbeddingProvider seam, so
-        // ingestion and retrieval consume the gateway through the engine contract only.
+        services.AddInstantAIGateClient(options =>
+            configuration.GetSection("Gateway").Bind(options));
         services.AddSingleton<IEmbeddingProvider, GatewayEmbeddingProvider>();
+        services.AddSingleton<IChatClient>(sp =>
+        {
+            GatewayOptions options = sp.GetRequiredService<IOptions<GatewayOptions>>().Value;
+            IChatClientFactory factory = sp.GetRequiredService<IChatClientFactory>();
+            return factory.Create(options.ContextPolicy);
+        });
     }
 
     private static void RegisterVectra(IServiceCollection services, IConfiguration configuration)
