@@ -1,8 +1,7 @@
-<Solution>
+﻿<Solution>
   <Folder Name="/src/">
     <Project Path="src/Instancium.Chunker/Instancium.Chunker.csproj" />
     <Project Path="src/Instancium.FileParser/Instancium.FileParser.csproj" />
-    <Project Path="src/Instancium.InstantAIGate.Client/Instancium.InstantAIGate.Client.csproj" />
     <Project Path="src/Instancium.Lens.App/Instancium.Lens.App.csproj">
       <Deploy Solution="Debug|*" />
     </Project>

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
@@ -29,13 +29,14 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.14" />
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.14" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.14" />
+    <PackageReference Include="InstantAIGate.Client" Version="1.6.2" />
     <PackageReference Include="Instancium.Vectra" Version="1.1.1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Instancium.Lens.Core/Instancium.Lens.Core.csproj" />
     <ProjectReference Include="../Instancium.FileParser/Instancium.FileParser.csproj" />
     <ProjectReference Include="../Instancium.Chunker/Instancium.Chunker.csproj" />
-    <ProjectReference Include="../Instancium.InstantAIGate.Client/Instancium.InstantAIGate.Client.csproj" />
     <ProjectReference Include="../Instancium.Lens.Ingestion/Instancium.Lens.Ingestion.csproj" />
     <ProjectReference Include="../Instancium.Lens.Chat/Instancium.Lens.Chat.csproj" />
   </ItemGroup>

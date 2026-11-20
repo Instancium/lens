@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <RootNamespace>Instancium.Lens.Ingestion</RootNamespace>
@@ -14,7 +14,6 @@
     <ProjectReference Include="../Instancium.Lens.Core/Instancium.Lens.Core.csproj" />
     <ProjectReference Include="../Instancium.FileParser/Instancium.FileParser.csproj" />
     <ProjectReference Include="../Instancium.Chunker/Instancium.Chunker.csproj" />
-    <ProjectReference Include="../Instancium.InstantAIGate.Client/Instancium.InstantAIGate.Client.csproj" />
     <PackageReference Include="Instancium.Vectra" Version="1.1.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
   </ItemGroup>
