@@ -1,6 +1,7 @@
 # Instancium Lens
 
-Local-first AI workspace for document understanding, built on Instancium.Vectra and InstantAIGate.
+Local-first AI workspace for document understanding, built on Instancium.Vectra
+and the official InstantAIGate.Client SDK.
 
 Lens indexes your documents on-device and answers natural-language questions with
 numbered citations back to the exact source chunk. No mandatory cloud dependency:
@@ -16,31 +17,40 @@ retrieval runs in-process (Vectra), inference runs on your machine (InstantAIGat
 ## How It Works
 
 ```
-┌───────────────────────────────────────────┐
-│  Instancium.Lens.App (MAUI + Blazor UI)   │
-└─────────────────┬─────────────────────────┘
-                  │ IndexFolderAsync / AskStreamingAsync
-        ┌─────────┴─────────┐
-        ▼                   ▼
-┌──────────────────┐  ┌───────────────┐
-│ Lens.Ingestion   │  │ Lens.Chat     │
-│ parse→chunk→     │  │ retrieve→     │
-│ embed→store      │  │ prompt→stream │
-└────────┬─────────┘  └──────┬────────┘
-         ▼                   ▼
-┌───────────────────┐  ┌─────────────────────────────────┐
-│ Instancium.Vectra │  │ Instancium.InstantAIGate.Client │
-│ local vector      │  │ SignalR: embeddings             │
-│ store, cosine     │  │ (qwen3-embedding-0.6b) + LLM    │
-│ search            │  │ token streaming                 │
-└───────────────────┘  └─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Instancium.Lens.App (MAUI + Blazor UI, composition root)   │
+│  GatewayEmbeddingProvider: Vectra seam <-> gateway SDK      │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ IndexFolderAsync / AskStreamingAsync
+                 ┌─────────┴─────────┐
+                 ▼                   ▼
+        ┌──────────────────┐  ┌───────────────┐
+        │ Lens.Ingestion   │  │ Lens.Chat     │
+        │ parse→chunk→     │  │ retrieve→     │
+        │ embed→store      │  │ prompt→stream │
+        └────────┬─────────┘  └──────┬────────┘
+                 ▼                   ▼
+     ┌───────────────────┐  ┌────────────────────────────────┐
+     │ Instancium.Vectra │  │ InstantAIGate.Client           │
+     │ local vector      │  │ SignalR: embeddings + LLM      │
+     │ store, cosine     │  │ streaming, KV-cache policies,  │
+     │ search            │  │ checkpointed Map-Reduce        │
+     └───────────────────┘  └────────────────────────────────┘
 ```
 
-- Retrieval: `IVectraCollection.SearchTextAsync` over a per-profile collection (Cosine metric).
-- Inference: InstantAIGate hub over SignalR; the gateway must report `Ready` before use.
-- Streaming: `IChatService.AskStreamingAsync` reports pipeline stages (Retrieving → Generating)
+- **Retrieval**: `IVectraCollection.SearchTextAsync` over a per-profile collection (Cosine metric).
+- **Inference**: the `InstantAIGate.Client` NuGet SDK owns the SignalR transport and gates
+  every operation on gateway `Ready` status. `InstantAIGate.Core` arrives transitively
+  through the SDK; the solution holds no direct Core reference.
+- **Embeddings**: the SDK returns `EmbeddingResponse` and stays free of vector-store
+  dependencies. The composition root adapts it to the Vectra `IEmbeddingProvider` seam
+  (`Services/GatewayEmbeddingProvider`), the only place that knows both contracts.
+- **Sessions**: `Gateway:ContextPolicy` selects `Stateless` (default; the session is
+  destroyed after each turn, returning the VRAM slot immediately) or `Conversational`
+  (KV-cache retained until the client is disposed).
+- **Streaming**: `IChatService.AskStreamingAsync` reports pipeline stages (Retrieving → Generating)
   and answer tokens; the UI never sits in an opaque "Thinking…" state.
-- Citations: every answer carries `[n]` markers bound to
+- **Citations**: every answer carries `[n]` markers bound to
   `Citation(Number, Source, ChunkIndex, Text)`; the UI renders them as collapsible sources.
 
 ## Core Features (current build)
@@ -53,18 +63,21 @@ retrieval runs in-process (Vectra), inference runs on your machine (InstantAIGat
 | Grounded Q&A with stage visibility and token streaming | Shipped |
 | Numbered citations with source path and chunk index | Shipped |
 | PDF and Office formats | Roadmap: post-MVP, via new `IFileParser` implementations |
-| Rerank, query rewriting, multi-turn context | Roadmap: Phase 5 |
+| Rerank, query rewriting, multi-turn context | Roadmap: Phase 5; the SDK already ships `IChatMapReduceClient` and `CheckpointedChatContextStrategy` as extension seams |
 
 ## Storage Model (Local-First)
 
-- The index lives next to the documents: `<selected root>/.instancium`
-  (configurable via `Vectra:IndexFolderName`).
-- Profiles never bound to a folder fall back to the default root
-  `<AppData>/lens-vectra` (configurable via `Vectra:BaseDirectory`).
-- The profile id is the Vectra collection name; the profile → root binding persists
-  across restarts, so chat resolves the same index after relaunch.
-- Enterprise mode (remote Vectra) is a configuration-driven switch of `IVectraEngine`;
-  business logic (`IngestionService`, `ChatService`) stays unchanged.
+The index lives next to the documents: `<selected root>/.instancium`
+(configurable via `Vectra:IndexFolderName`).
+
+Profiles never bound to a folder fall back to the default root
+`<AppData>/lens-vectra` (configurable via `Vectra:BaseDirectory`).
+
+The profile id is the Vectra collection name; the profile → root binding persists
+across restarts, so chat resolves the same index after relaunch.
+
+Enterprise mode (remote Vectra) is a configuration-driven switch of `IVectraEngine`;
+business logic (`IngestionService`, `ChatService`) stays unchanged.
 
 ## Quick Start
 
@@ -84,7 +97,7 @@ Run:
 
 Test:
 
-- `dotnet test InstanciumLens.slnx` runs the xUnit v3 suites for Core and Chat.
+`dotnet test InstanciumLens.slnx` runs the xUnit v3 suites for Core and Chat.
 
 ## Configuration
 
@@ -95,23 +108,25 @@ Bundled `Resources/Raw/appsettings.json`, overridable by environment variables:
 | `Gateway:BaseUrl` | `http://localhost:5000` | InstantAIGate base URL |
 | `Gateway:HubPath` | `/hub/gateway` | SignalR hub path |
 | `Gateway:ApiKey` | placeholder | Auth key; override via `Gateway__ApiKey` |
-| `Gateway:EmbeddingRepoId` | `qwen3-embedding-0.6b` | Embedding model id |
-| `Gateway:ExpectedEmbeddingDimension` | `1024` | Validated on first embed call |
+| `Gateway:ClientId` | `lens` (bundled; SDK default `client`) | Session ID prefix for server-side telemetry correlation |
+| `Gateway:EmbeddingRepoId` | `qwen3-embedding-0.6b` | Embedding model id; empty lets the gateway auto-resolve, but the Vectra bridge requires an explicit value |
+| `Gateway:LlmRepoId` | empty → primary model | Chat model repository override |
+| `Gateway:ExpectedEmbeddingDimension` | `1024` | Required by the Vectra bridge (synchronous `Dimension`); validated against the gateway on first embed and on every response |
 | `Gateway:ContextPolicy` | `Stateless` | Session retention: `Stateless` or `Conversational` |
+| `Gateway:ReconnectDelays` | `0/2/5/10/30 s` | SignalR automatic reconnect backoff |
 | `Vectra:BaseDirectory` | empty → AppData | Default index root for unbound profiles |
 | `Vectra:IndexFolderName` | `.instancium` | Index subfolder inside the scanned root |
 | `Chat:TopK` | `5` | Context chunks retrieved per question |
 | `Chunking:ChunkSize` / `Chunking:Overlap` | `512` / `50` | Chunker parameters |
 
-
 ## License & Trademark
 
 Copyright (c) 2026 Instancium™ (https://instancium.com). All rights reserved.
 
-- Source code: Apache License 2.0 — see [LICENSE](LICENSE.txt).
-- Third-party components, models and licenses: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
-- Branding: the Instancium and Instancium Lens names, logos and icon assets
-  (`Resources/AppIcon`, `Resources/Splash`, `wwwroot/imgs`) are the exclusive property
-  of Instancium, licensed under [CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/);
-  reference use only, no modification, no commercial implication.
+Source code: Apache License 2.0 — see [LICENSE](LICENSE.txt).
+Third-party components, models and licenses: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
+Branding: the Instancium and Instancium Lens names, logos and icon assets
+(`Resources/AppIcon`, `Resources/Splash`, `wwwroot/imgs`) are the exclusive property
+of Instancium, licensed under [CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/);
+reference use only, no modification, no commercial implication.
