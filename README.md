@@ -64,6 +64,33 @@ retrieval runs in-process (Vectra), inference runs on your machine (InstantAIGat
 | Numbered citations with source path and chunk index | Shipped |
 | PDF and Office formats | Roadmap: post-MVP, via new `IFileParser` implementations |
 | Rerank, query rewriting, multi-turn context | Roadmap: Phase 5; the SDK already ships `IChatMapReduceClient` and `CheckpointedChatContextStrategy` as extension seams |
+| AI Output Verification (`Verify Mode`) | Roadmap / Target Research: atomic claim decomposition and closed-world verification of external AI outputs against local Vectra collections |
+| Domain-adapted LoRA verifiers | Roadmap: fine-tuning and attaching task- or domain-specific LoRA adapters directly in `InstantAIGate` |
+
+## Target Research: AI Output Verification
+
+While large external models excel at broad synthesis and drafting, organizations
+operating in regulated or high-stakes domains require an independent mechanism to
+audit AI-generated conclusions against their own ground-truth documentation.
+
+Lens targets this gap by evolving from a document Q&A workspace into a local-first
+**AI Verification Layer**:
+
+1. **Claim Decomposition**: An external AI response or draft report is broken down
+   into atomic, self-contained factual claims using `IChatMapReduceClient`.
+2. **Closed-World Evidence Retrieval**: Each claim is queried independently against
+   the local `Instancium.Vectra` collection under the `Stateless` context policy,
+   preventing cross-turn contamination.
+3. **Strict Ground-Truth Auditing**: A compact or LoRA-adapted local model via
+   `InstantAIGate` evaluates each claim exclusively against the retrieved passages
+   and assigns a verdict (`SUPPORTED`, `CONTRADICTED`, `PARTIAL`, `UNVERIFIED`)
+   bound to exact `Citation(Number, Source, ChunkIndex, Text)` records.
+
+**Research focus:** evaluating verification precision and hallucination-detection
+rates of compact fine-tuned local models (2B–8B quantized with domain- or
+task-specific LoRA adapters attached via `InstantAIGate`) when auditing outputs
+from frontier models across corporate policies, technical specifications, and
+contracts.
 
 ## Storage Model (Local-First)
 
